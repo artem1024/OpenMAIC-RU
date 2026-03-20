@@ -46,7 +46,7 @@
 ### 1. Клонирование и установка
 
 ```bash
-git clone https://github.com/your-org/OpenMAIC-RU.git
+git clone https://github.com/artem1024/OpenMAIC-RU.git
 cd OpenMAIC-RU
 pnpm install
 ```
