@@ -890,6 +890,15 @@ export const DEFAULT_TTS_VOICES: Record<TTSProviderId, string> = {
 };
 
 /**
+ * Edge TTS voice by speaker gender.
+ * Used for automatic voice selection based on agent name/gender.
+ */
+export const EDGE_TTS_VOICE_BY_GENDER: Record<'male' | 'female', string> = {
+  male: 'ru-RU-DmitryNeural',
+  female: 'ru-RU-SvetlanaNeural',
+};
+
+/**
  * Get voices for a specific TTS provider
  */
 export function getTTSVoices(providerId: TTSProviderId): TTSVoiceInfo[] {

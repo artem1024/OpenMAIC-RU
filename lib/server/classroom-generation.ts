@@ -394,7 +394,8 @@ export async function generateClassroom(
     });
 
     try {
-      await generateTTSForClassroom(scenes, stageId, options.baseUrl);
+      const teacher = agents.find(a => a.role === 'teacher');
+      await generateTTSForClassroom(scenes, stageId, options.baseUrl, teacher?.name);
       log.info('TTS generation complete');
     } catch (err) {
       log.warn('TTS generation phase failed, continuing:', err);

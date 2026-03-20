@@ -130,6 +130,8 @@ export interface TTSModelConfig {
   voice: string;
   speed?: number;
   format?: string;
+  /** Speaker name for gender-based voice selection (Edge TTS) */
+  speakerName?: string;
 }
 
 // ============================================================================

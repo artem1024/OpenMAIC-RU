@@ -90,7 +90,7 @@
  */
 
 import type { TTSModelConfig } from './types';
-import { TTS_PROVIDERS } from './constants';
+import { TTS_PROVIDERS, EDGE_TTS_VOICE_BY_GENDER } from './constants';
 import { execFile } from 'child_process';
 import { readFile, unlink } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -338,6 +338,62 @@ function normalizeForTTS(text: string): string {
 }
 
 /**
+ * Infer speaker gender from name for Edge TTS voice auto-selection.
+ * Returns 'male' or 'female' based on known name patterns.
+ */
+function inferGenderFromName(name: string): 'male' | 'female' {
+  const normalized = name.trim().toLowerCase();
+  // Extract first word (first name)
+  const firstName = normalized.split(/[\s,]+/)[0];
+
+  const maleNames = new Set([
+    // Russian male names
+    'алексей', 'александр', 'андрей', 'антон', 'артём', 'артем', 'борис',
+    'вадим', 'валерий', 'василий', 'виктор', 'виталий', 'владимир', 'владислав',
+    'геннадий', 'георгий', 'глеб', 'григорий', 'даниил', 'денис', 'дмитрий',
+    'евгений', 'егор', 'иван', 'игорь', 'илья', 'кирилл', 'константин',
+    'лев', 'леонид', 'максим', 'михаил', 'никита', 'николай', 'олег',
+    'павел', 'пётр', 'петр', 'роман', 'руслан', 'сергей', 'степан',
+    'тимофей', 'фёдор', 'федор', 'филипп', 'юрий', 'ярослав',
+    // English male names
+    'alex', 'andrew', 'bob', 'charles', 'daniel', 'david', 'edward',
+    'george', 'henry', 'jack', 'james', 'john', 'mark', 'michael', 'mike',
+    'nick', 'paul', 'peter', 'richard', 'robert', 'steve', 'thomas', 'tom',
+    'william',
+    // Chinese male indicators
+    '云希', '云健',
+  ]);
+
+  if (maleNames.has(firstName)) return 'male';
+
+  // Heuristic: Russian names ending in consonant or -й/-ий are typically male
+  if (/[бвгджзклмнпрстфхцчшщй]$/i.test(firstName) && firstName.length > 2) {
+    // But exclude common female endings like -ь (любовь, etc.)
+    if (!/ь$/.test(firstName)) return 'male';
+  }
+
+  return 'female';
+}
+
+/**
+ * Resolve Edge TTS voice based on speaker name.
+ * If user explicitly set a non-default voice, respect it.
+ * Otherwise, auto-select by inferred gender.
+ */
+function resolveEdgeTTSVoice(configVoice: string, speakerName?: string): string {
+  // If no speaker name provided, use configured voice as-is
+  if (!speakerName) return configVoice || EDGE_TTS_VOICE_BY_GENDER.female;
+
+  // If user explicitly chose a specific voice (not the default), respect it
+  const defaultVoice = EDGE_TTS_VOICE_BY_GENDER.female; // ru-RU-SvetlanaNeural
+  if (configVoice && configVoice !== defaultVoice) return configVoice;
+
+  // Auto-select voice by speaker gender
+  const gender = inferGenderFromName(speakerName);
+  return EDGE_TTS_VOICE_BY_GENDER[gender];
+}
+
+/**
  * Edge TTS implementation (CLI-based, free, no API key required)
  */
 async function generateEdgeTTS(
@@ -345,7 +401,7 @@ async function generateEdgeTTS(
   text: string,
 ): Promise<TTSGenerationResult> {
   const normalizedText = normalizeForTTS(text);
-  const voice = config.voice || 'ru-RU-SvetlanaNeural';
+  const voice = resolveEdgeTTSVoice(config.voice, config.speakerName);
   const speed = config.speed || 1.0;
 
   // Calculate rate string: 1.0 → '+0%', 1.5 → '+50%', 0.5 → '-50%'

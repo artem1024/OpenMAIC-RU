@@ -125,6 +125,7 @@ export async function generateAndStoreTTS(
   audioId: string,
   text: string,
   signal?: AbortSignal,
+  speakerName?: string,
 ): Promise<void> {
   const settings = useSettingsStore.getState();
   if (settings.ttsProviderId === 'browser-native-tts') return;
@@ -141,6 +142,7 @@ export async function generateAndStoreTTS(
       ttsSpeed: settings.ttsSpeed,
       ttsApiKey: ttsProviderConfig?.apiKey || undefined,
       ttsBaseUrl: ttsProviderConfig?.baseUrl || undefined,
+      speakerName,
     }),
     signal,
   });
@@ -170,6 +172,27 @@ export async function generateAndStoreTTS(
   });
 }
 
+/** Get the teacher agent name for TTS voice selection */
+function getTeacherName(): string | undefined {
+  try {
+    // Lazy access to avoid import cycle
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { useAgentRegistry } = require('@/lib/orchestration/registry/store');
+    const registry = useAgentRegistry.getState();
+    const selectedIds: string[] = useSettingsStore.getState().selectedAgentIds || [];
+    for (const id of selectedIds) {
+      const agent = registry.getAgent(id);
+      if (agent?.role === 'teacher') return agent.name;
+    }
+    // Fallback: find any teacher
+    const allAgents = registry.getAllAgents();
+    const teacher = allAgents.find((a: { role: string }) => a.role === 'teacher');
+    return teacher?.name;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Generate TTS for all speech actions in a scene. Returns result. */
 async function generateTTSForScene(
   scene: Scene,
@@ -182,6 +205,9 @@ async function generateTTSForScene(
   );
   if (speechActions.length === 0) return { success: true, failedCount: 0 };
 
+  // Resolve teacher name for Edge TTS gender-based voice selection
+  const teacherName = providerId === 'edge-tts' ? getTeacherName() : undefined;
+
   let failedCount = 0;
   let lastError: string | undefined;
 
@@ -189,7 +215,7 @@ async function generateTTSForScene(
     const audioId = `tts_${action.id}`;
     action.audioId = audioId;
     try {
-      await generateAndStoreTTS(audioId, action.text, signal);
+      await generateAndStoreTTS(audioId, action.text, signal, teacherName);
     } catch (error) {
       failedCount++;
       lastError = error instanceof Error ? error.message : `TTS failed for action ${action.id}`;
