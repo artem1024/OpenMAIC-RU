@@ -254,8 +254,8 @@ const getDefaultProvidersConfig = (): ProvidersConfig => {
 
 // Initialize default audio config
 const getDefaultAudioConfig = () => ({
-  ttsProviderId: 'browser-native-tts' as TTSProviderId,
-  ttsVoice: 'default',
+  ttsProviderId: 'edge-tts' as TTSProviderId,
+  ttsVoice: 'ru-RU-SvetlanaNeural',
   ttsSpeed: 1.0,
   asrProviderId: 'browser-native' as ASRProviderId,
   asrLanguage: 'zh',
@@ -264,6 +264,7 @@ const getDefaultAudioConfig = () => ({
     'azure-tts': { apiKey: '', baseUrl: '', enabled: false },
     'glm-tts': { apiKey: '', baseUrl: '', enabled: false },
     'qwen-tts': { apiKey: '', baseUrl: '', enabled: false },
+    'edge-tts': { apiKey: '', baseUrl: '', enabled: true },
     'browser-native-tts': { apiKey: '', baseUrl: '', enabled: true },
   } as Record<TTSProviderId, { apiKey: string; baseUrl: string; enabled: boolean }>,
   asrProvidersConfig: {

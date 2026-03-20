@@ -72,11 +72,11 @@ const LANG_LABELS: Record<string, string> = {
   hi: 'हिन्दी',
 };
 
-const TABS: Array<{ id: TabId; icon: LucideIcon; label: string }> = [
-  { id: 'image', icon: ImageIcon, label: 'Image' },
-  { id: 'video', icon: Video, label: 'Video' },
-  { id: 'tts', icon: Volume2, label: 'TTS' },
-  { id: 'asr', icon: Mic, label: 'ASR' },
+const TAB_DEFS: Array<{ id: TabId; icon: LucideIcon; labelKey: string }> = [
+  { id: 'image', icon: ImageIcon, labelKey: 'media.imageCapability' },
+  { id: 'video', icon: Video, labelKey: 'media.videoCapability' },
+  { id: 'tts', icon: Volume2, labelKey: 'media.ttsCapability' },
+  { id: 'asr', icon: Mic, labelKey: 'media.asrCapability' },
 ];
 
 /** Localized TTS provider name (mirrors audio-settings.tsx) */
@@ -86,6 +86,7 @@ function getTTSProviderName(providerId: TTSProviderId, t: (key: string) => strin
     'azure-tts': t('settings.providerAzureTTS'),
     'glm-tts': t('settings.providerGLMTTS'),
     'qwen-tts': t('settings.providerQwenTTS'),
+    'edge-tts': t('settings.providerEdgeTTS'),
     'browser-native-tts': t('settings.providerBrowserNativeTTS'),
   };
   return names[providerId] || providerId;
@@ -340,7 +341,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
         {/* ── Tab bar (segmented control) ── */}
         <div className="p-2 pb-0">
           <div className="flex gap-0.5 p-0.5 bg-muted/60 rounded-lg">
-            {TABS.map((tab) => {
+            {TAB_DEFS.map((tab) => {
               const isActive = activeTab === tab.id;
               const isEnabled = enabledMap[tab.id];
               const Icon = tab.icon;
@@ -356,7 +357,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
                   )}
                 >
                   <Icon className="size-3.5" />
-                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className="hidden sm:inline">{t(tab.labelKey)}</span>
                   {isEnabled && !isActive && (
                     <span className="absolute top-1 right-1 size-1.5 rounded-full bg-violet-500" />
                   )}

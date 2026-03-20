@@ -91,6 +91,10 @@
 
 import type { TTSModelConfig } from './types';
 import { TTS_PROVIDERS } from './constants';
+import { execFile } from 'child_process';
+import { readFile, unlink } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 /**
  * Result of TTS generation
@@ -129,6 +133,9 @@ export async function generateTTS(
 
     case 'qwen-tts':
       return await generateQwenTTS(config, text);
+
+    case 'edge-tts':
+      return await generateEdgeTTS(config, text);
 
     case 'browser-native-tts':
       throw new Error(
@@ -314,6 +321,64 @@ async function generateQwenTTS(config: TTSModelConfig, text: string): Promise<TT
     audio: new Uint8Array(arrayBuffer),
     format: 'wav', // Qwen3 TTS returns WAV format
   };
+}
+
+/**
+ * Normalize Russian text for TTS by expanding common abbreviations
+ */
+function normalizeForTTS(text: string): string {
+  return text
+    .replace(/\bИИ\b/g, 'искусственный интеллект')
+    .replace(/\bт\.д\./g, 'так далее')
+    .replace(/\bт\.п\./g, 'тому подобное')
+    .replace(/\bт\.е\./g, 'то есть')
+    .replace(/\bнапр\./g, 'например')
+    .replace(/\bдр\./g, 'другие')
+    .replace(/\bсм\./g, 'смотри');
+}
+
+/**
+ * Edge TTS implementation (CLI-based, free, no API key required)
+ */
+async function generateEdgeTTS(
+  config: TTSModelConfig,
+  text: string,
+): Promise<TTSGenerationResult> {
+  const normalizedText = normalizeForTTS(text);
+  const voice = config.voice || 'ru-RU-SvetlanaNeural';
+  const speed = config.speed || 1.0;
+
+  // Calculate rate string: 1.0 → '+0%', 1.5 → '+50%', 0.5 → '-50%'
+  const ratePercent = Math.round((speed - 1.0) * 100);
+  const rateStr = ratePercent >= 0 ? `+${ratePercent}%` : `${ratePercent}%`;
+
+  const tmpFile = join(tmpdir(), `edge-tts-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        'edge-tts',
+        ['--text', normalizedText, '--voice', voice, '--rate', rateStr, '--write-media', tmpFile],
+        { timeout: 30000 },
+        (error, _stdout, stderr) => {
+          if (error) {
+            reject(new Error(`Edge TTS error: ${stderr || error.message}`));
+          } else {
+            resolve();
+          }
+        },
+      );
+    });
+
+    const audioBuffer = await readFile(tmpFile);
+    return {
+      audio: new Uint8Array(audioBuffer),
+      format: 'mp3',
+    };
+  } finally {
+    // Clean up temp file
+    await unlink(tmpFile).catch(() => {});
+  }
 }
 
 /**

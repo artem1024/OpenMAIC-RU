@@ -15,6 +15,7 @@ import {
   Play,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useI18n } from '@/lib/hooks/use-i18n';
 import type { SceneOutline } from '@/lib/types/generation';
 
 // Step-specific visualizers
@@ -627,39 +628,40 @@ function ContentVisualizer() {
 // Actions: Timeline of speech, spotlight, and interactions being orchestrated
 function ActionsVisualizer() {
   const [activeIdx, setActiveIdx] = useState(0);
+  const { t } = useI18n();
 
   const actionItems = [
     {
       icon: MessageSquare,
-      label: 'Speech',
+      label: t('generation.actionSpeech'),
       color: 'text-violet-500',
       activeBg: 'bg-violet-500/10',
       activeBorder: 'border-violet-200 dark:border-violet-800',
     },
     {
       icon: Focus,
-      label: 'Spotlight',
+      label: t('generation.actionSpotlight'),
       color: 'text-amber-500',
       activeBg: 'bg-amber-500/10',
       activeBorder: 'border-amber-200 dark:border-amber-800',
     },
     {
       icon: MessageSquare,
-      label: 'Speech',
+      label: t('generation.actionSpeech'),
       color: 'text-violet-500',
       activeBg: 'bg-violet-500/10',
       activeBorder: 'border-violet-200 dark:border-violet-800',
     },
     {
       icon: Play,
-      label: 'Interact',
+      label: t('generation.actionInteract'),
       color: 'text-emerald-500',
       activeBg: 'bg-emerald-500/10',
       activeBorder: 'border-emerald-200 dark:border-emerald-800',
     },
     {
       icon: MessageSquare,
-      label: 'Speech',
+      label: t('generation.actionSpeech'),
       color: 'text-violet-500',
       activeBg: 'bg-violet-500/10',
       activeBorder: 'border-violet-200 dark:border-violet-800',

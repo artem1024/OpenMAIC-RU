@@ -69,6 +69,77 @@ export const chatZhCN = {
   },
 } as const;
 
+export const chatRuRU = {
+  chat: {
+    lecture: 'Лекция',
+    noConversations: 'Нет диалогов',
+    startConversation: 'Введите сообщение, чтобы начать диалог',
+    noMessages: 'Сообщений пока нет',
+    ended: 'завершено',
+    unknown: 'Неизвестно',
+    stopDiscussion: 'Завершить обсуждение',
+    endQA: 'Завершить вопросы',
+    tabs: {
+      lecture: 'Заметки',
+      chat: 'Чат',
+    },
+    lectureNotes: {
+      empty: 'Заметки появятся здесь после воспроизведения лекции',
+      emptyHint: 'Нажмите кнопку воспроизведения, чтобы начать лекцию',
+      pageLabel: 'Стр. {n}',
+      currentPage: 'Текущая',
+    },
+    badge: {
+      qa: 'Вопросы',
+      discussion: 'ОБСУЖД',
+      lecture: 'ЛЕКЦ',
+    },
+  },
+  actions: {
+    names: {
+      spotlight: 'Прожектор',
+      laser: 'Лазерная указка',
+      wb_open: 'Открыть доску',
+      wb_draw_text: 'Текст на доске',
+      wb_draw_shape: 'Фигура на доске',
+      wb_draw_chart: 'Диаграмма на доске',
+      wb_draw_latex: 'Формула на доске',
+      wb_draw_table: 'Таблица на доске',
+      wb_draw_line: 'Линия на доске',
+      wb_clear: 'Очистить доску',
+      wb_delete: 'Удалить элемент',
+      wb_close: 'Закрыть доску',
+      discussion: 'Обсуждение в классе',
+    },
+    status: {
+      inputStreaming: 'Ожидание',
+      inputAvailable: 'Выполняется',
+      outputAvailable: 'Завершено',
+      outputError: 'Ошибка',
+      outputDenied: 'Отклонено',
+      running: 'Выполняется',
+      result: 'Завершено',
+      error: 'Ошибка',
+    },
+  },
+  agentBar: {
+    readyToLearn: 'Готовы учиться вместе?',
+    expandedTitle: 'Настройка ролей в классе',
+    configTooltip: 'Нажмите для настройки ролей в классе',
+  },
+  proactiveCard: {
+    discussion: 'Обсуждение',
+    join: 'Присоединиться',
+    skip: 'Пропустить',
+    pause: 'Пауза',
+    resume: 'Продолжить',
+  },
+  voice: {
+    startListening: 'Голосовой ввод',
+    stopListening: 'Остановить запись',
+  },
+} as const;
+
 export const chatEnUS = {
   chat: {
     lecture: 'Lecture',

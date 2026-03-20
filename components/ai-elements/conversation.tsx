@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { getClientTranslation } from '@/lib/i18n';
 import { ArrowDownIcon } from 'lucide-react';
 import type { ComponentProps } from 'react';
 import { useCallback } from 'react';
@@ -33,8 +34,8 @@ export type ConversationEmptyStateProps = ComponentProps<'div'> & {
 
 export const ConversationEmptyState = ({
   className,
-  title = 'No messages yet',
-  description = 'Start a conversation to see messages here',
+  title = getClientTranslation('chat.noMessages'),
+  description = getClientTranslation('chat.startConversation'),
   icon,
   children,
   ...props

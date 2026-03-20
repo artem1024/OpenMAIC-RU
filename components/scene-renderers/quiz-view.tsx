@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { translate, type Locale } from '@/lib/i18n';
 import { getCurrentModelConfig } from '@/lib/utils/model-config';
 import { createLogger } from '@/lib/logger';
 
@@ -127,10 +128,7 @@ async function gradeShortAnswerQuestion(
       correct: null,
       status: 'incorrect',
       earned: Math.round(pts * 0.5),
-      aiComment:
-        language === 'zh-CN'
-          ? '评分服务暂时不可用，已给予基础分。'
-          : 'Grading service unavailable. Base score given.',
+      aiComment: translate(language as Locale, 'quiz.gradingUnavailable'),
     };
   }
 }

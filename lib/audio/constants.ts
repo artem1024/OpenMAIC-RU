@@ -606,6 +606,58 @@ export const TTS_PROVIDERS: Record<TTSProviderId, TTSProviderConfig> = {
     supportedFormats: ['mp3', 'wav', 'pcm'],
   },
 
+  'edge-tts': {
+    id: 'edge-tts',
+    name: 'Edge TTS (Microsoft)',
+    requiresApiKey: false,
+    icon: '/logos/edge.svg',
+    voices: [
+      // Russian voices
+      {
+        id: 'ru-RU-SvetlanaNeural',
+        name: 'Светлана (жен.)',
+        language: 'ru-RU',
+        localeName: 'Русский (Россия)',
+        gender: 'female',
+      },
+      {
+        id: 'ru-RU-DmitryNeural',
+        name: 'Дмитрий (муж.)',
+        language: 'ru-RU',
+        localeName: 'Русский (Россия)',
+        gender: 'male',
+      },
+      // Chinese voices
+      {
+        id: 'zh-CN-XiaoxiaoNeural',
+        name: '晓晓 (女)',
+        language: 'zh-CN',
+        gender: 'female',
+      },
+      {
+        id: 'zh-CN-YunxiNeural',
+        name: '云希 (男)',
+        language: 'zh-CN',
+        gender: 'male',
+      },
+      // English voices
+      {
+        id: 'en-US-JennyNeural',
+        name: 'Jenny',
+        language: 'en-US',
+        gender: 'female',
+      },
+      {
+        id: 'en-US-GuyNeural',
+        name: 'Guy',
+        language: 'en-US',
+        gender: 'male',
+      },
+    ],
+    supportedFormats: ['mp3'],
+    speedRange: { min: 0.5, max: 2.0, default: 1.0 },
+  },
+
   'browser-native-tts': {
     id: 'browser-native-tts',
     name: '浏览器原生 (Web Speech API)',
@@ -833,6 +885,7 @@ export const DEFAULT_TTS_VOICES: Record<TTSProviderId, string> = {
   'azure-tts': 'zh-CN-XiaoxiaoNeural',
   'glm-tts': 'tongtong',
   'qwen-tts': 'Cherry',
+  'edge-tts': 'ru-RU-SvetlanaNeural',
   'browser-native-tts': 'default',
 };
 
