@@ -65,7 +65,7 @@ MIMO_API_KEY=ваш-ключ
 MIMO_BASE_URL=https://api.xiaomimimo.com/v1
 ```
 
-Также поддерживаются: **Google Gemini**, **DeepSeek**, **OpenAI**, **Anthropic** и любой OpenAI-compatible API.
+Также поддерживаются: **Google Gemini**, **DeepSeek**, **OpenAI**, **Anthropic**, **Grok (xAI)** и любой OpenAI-compatible API.
 
 ### 3. Запуск
 
