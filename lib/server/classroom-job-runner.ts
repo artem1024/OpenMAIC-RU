@@ -32,6 +32,29 @@ export function runClassroomGenerationJob(
       });
 
       await markClassroomGenerationJobSucceeded(jobId, result);
+
+      // Отправить webhook в витрину Осваивай, если настроен
+      const webhookUrl = process.env.OSVAIVAI_WEBHOOK_URL;
+      if (webhookUrl) {
+        try {
+          await fetch(webhookUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Webhook-Secret': process.env.OSVAIVAI_WEBHOOK_SECRET || '',
+            },
+            body: JSON.stringify({
+              classroomId: result.id,
+              title: result.stage?.name || '',
+              scenesCount: result.scenesCount,
+              htmlPath: result.url || null,
+            }),
+          });
+        } catch (webhookError) {
+          log.warn('Webhook to osvaivai failed:', webhookError);
+          // Не блокируем основной flow
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       log.error(`Classroom generation job ${jobId} failed:`, error);
