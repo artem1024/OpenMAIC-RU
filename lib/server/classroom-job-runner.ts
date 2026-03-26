@@ -44,6 +44,7 @@ export function runClassroomGenerationJob(
               'X-Webhook-Secret': process.env.OSVAIVAI_WEBHOOK_SECRET || '',
             },
             body: JSON.stringify({
+              jobId: jobId,
               classroomId: result.id,
               title: result.stage?.name || '',
               scenesCount: result.scenesCount,
