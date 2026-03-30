@@ -91,6 +91,7 @@ function getTTSProviderName(providerId: TTSProviderId, t: (key: string) => strin
     'edge-tts': t('settings.providerEdgeTTS'),
     'elevenlabs-tts': t('settings.providerElevenLabsTTS'),
     'gemini-tts': t('settings.providerGeminiTTS'),
+    'minimax-tts': t('settings.providerMiniMaxTTS'),
     'browser-native-tts': t('settings.providerBrowserNativeTTS'),
   };
   return names[providerId] || providerId;
@@ -275,6 +276,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
         speed: ttsSpeed,
         apiKey: providerConfig?.apiKey,
         baseUrl: providerConfig?.baseUrl,
+        model: providerConfig?.model,
       });
     } catch (error) {
       const message =

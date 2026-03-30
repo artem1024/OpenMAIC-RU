@@ -46,6 +46,7 @@ function getTTSProviderName(providerId: TTSProviderId, t: (key: string) => strin
     'edge-tts': t('settings.providerEdgeTTS'),
     'elevenlabs-tts': t('settings.providerElevenLabsTTS'),
     'gemini-tts': t('settings.providerGeminiTTS'),
+    'minimax-tts': t('settings.providerMiniMaxTTS'),
     'browser-native-tts': t('settings.providerBrowserNativeTTS'),
   };
   return names[providerId];
@@ -120,7 +121,7 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
 
   const handleTTSProviderConfigChange = (
     providerId: TTSProviderId,
-    config: Partial<{ apiKey: string; baseUrl: string; enabled: boolean }>,
+    config: Partial<{ apiKey: string; baseUrl: string; model?: string; enabled: boolean }>,
   ) => {
     setTTSProviderConfig(providerId, config);
     onSave?.();
