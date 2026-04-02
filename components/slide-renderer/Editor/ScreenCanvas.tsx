@@ -81,13 +81,16 @@ export function ScreenCanvas() {
           style={{ ...backgroundStyle }}
         ></div>
 
-        {/* Content layer - scaled */}
+        {/* Content layer - scaled via zoom (not transform) so overflow detection works */}
         <div
-          className="absolute top-0 left-0 origin-top-left"
+          className="absolute top-0 left-0"
           style={{
             width: `${viewportStyles.width}px`,
             height: `${viewportStyles.height}px`,
-            transform: `scale(${canvasScale})`,
+            zoom: canvasScale,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            scrollbarWidth: 'thin',
           }}
         >
           {elements.map((element, index) => (

@@ -468,11 +468,10 @@ export class PlaybackEngine {
           .play(speechAction.audioId || '', speechAction.audioUrl)
           .then((audioStarted) => {
             if (!audioStarted) {
-              // No pre-generated audio — try browser-native TTS if selected
+              // No pre-generated audio — always try browser TTS as fallback
               const settings = useSettingsStore.getState();
               if (
                 settings.ttsEnabled &&
-                settings.ttsProviderId === 'browser-native-tts' &&
                 typeof window !== 'undefined' &&
                 window.speechSynthesis
               ) {
@@ -483,8 +482,19 @@ export class PlaybackEngine {
             }
           })
           .catch((err) => {
-            log.error('TTS error:', err);
-            scheduleReadingTimer();
+            // audio.play() rejected (autoplay policy, network error, etc.)
+            // Fall back to browser TTS instead of silent timer
+            log.warn('Audio playback failed, trying browser TTS:', err);
+            const settings = useSettingsStore.getState();
+            if (
+              settings.ttsEnabled &&
+              typeof window !== 'undefined' &&
+              window.speechSynthesis
+            ) {
+              this.playBrowserTTS(speechAction);
+            } else {
+              scheduleReadingTimer();
+            }
           });
         break;
       }
@@ -634,7 +644,22 @@ export class PlaybackEngine {
       // auto-selects an appropriate voice.
       const cjkRatio =
         (chunkText.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length / chunkText.length;
-      utterance.lang = cjkRatio > CJK_LANG_THRESHOLD ? 'zh-CN' : 'en-US';
+      const cyrillicRatio =
+        (chunkText.match(/[\u0400-\u04ff]/g) || []).length / chunkText.length;
+      if (cjkRatio > CJK_LANG_THRESHOLD) {
+        utterance.lang = 'zh-CN';
+      } else if (cyrillicRatio > 0.2) {
+        utterance.lang = 'ru-RU';
+      } else {
+        utterance.lang = 'en-US';
+      }
+
+      // Try to pick a voice matching the detected language
+      const targetLang = utterance.lang;
+      const matchingVoice = voices.find((v) => v.lang.startsWith(targetLang.split('-')[0]));
+      if (matchingVoice) {
+        utterance.voice = matchingVoice;
+      }
     }
 
     utterance.onend = () => {

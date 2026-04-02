@@ -58,8 +58,9 @@ async function downloadToBuffer(url: string): Promise<Buffer> {
   return Buffer.from(await resp.arrayBuffer());
 }
 
-function mediaServingUrl(baseUrl: string, classroomId: string, subPath: string): string {
-  return `${baseUrl}/api/classroom-media/${classroomId}/${subPath}`;
+function mediaServingUrl(_baseUrl: string, classroomId: string, subPath: string): string {
+  // Use relative URL so it works both in direct access and via proxy/iframe
+  return `/api/classroom-media/${classroomId}/${subPath}`;
 }
 
 // ---------------------------------------------------------------------------

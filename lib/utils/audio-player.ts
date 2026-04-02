@@ -41,9 +41,15 @@ export class AudioPlayer {
         this.audio.addEventListener('ended', () => {
           this.onEndedCallback?.();
         });
-        await this.audio.play();
-        this.audio.playbackRate = this.playbackRate;
-        return true;
+        try {
+          await this.audio.play();
+          this.audio.playbackRate = this.playbackRate;
+          return true;
+        } catch (playError) {
+          log.warn('audio.play() rejected for URL, signaling fallback:', playError);
+          this.audio = null;
+          return false;
+        }
       }
 
       // 2. Fall back to IndexedDB (client-generated TTS)

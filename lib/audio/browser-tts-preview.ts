@@ -18,9 +18,14 @@ function createAbortError(): Error {
 }
 
 function inferPreviewLang(text: string): string {
+  if (text.length === 0) return 'ru-RU';
   const cjkCount = (text.match(/[\u4e00-\u9fff\u3400-\u4dbf]/g) || []).length;
-  const ratio = text.length > 0 ? cjkCount / text.length : 0;
-  return ratio > CJK_LANG_THRESHOLD ? 'zh-CN' : 'en-US';
+  const cyrillicCount = (text.match(/[\u0400-\u04ff]/g) || []).length;
+  const cjkRatio = cjkCount / text.length;
+  const cyrillicRatio = cyrillicCount / text.length;
+  if (cjkRatio > CJK_LANG_THRESHOLD) return 'zh-CN';
+  if (cyrillicRatio > 0.2) return 'ru-RU';
+  return 'en-US';
 }
 
 export function isBrowserTTSAbortError(error: unknown): boolean {

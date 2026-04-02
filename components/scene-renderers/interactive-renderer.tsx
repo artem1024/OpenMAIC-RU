@@ -36,7 +36,37 @@ export function InteractiveRenderer({ content, mode: _mode, sceneId }: Interacti
  * - Ensure html/body fill the iframe with no overflow issues
  * - Canvas elements use container sizing instead of viewport
  */
+function normalizeDoubleEscapedLatex(html: string): string {
+  // AI sometimes generates \\( instead of \( in HTML text.
+  // Protect <script> blocks, then fix double-escaped LaTeX delimiters and commands.
+  const scripts: string[] = [];
+  let result = html.replace(/<script[^>]*>[\s\S]*?<\/script>/gi, (m) => {
+    scripts.push(m);
+    return `__SN${scripts.length - 1}__`;
+  });
+
+  // \\( → \(, \\) → \), \\[ → \[, \\] → \]
+  result = result.replace(/\\\\([()[\]{}|])/g, '\\$1');
+  // \\command → \command for common LaTeX
+  result = result.replace(
+    /\\\\(sin|cos|tan|log|ln|exp|lim|sup|inf|max|min|sum|prod|int|frac|sqrt|vec|hat|bar|tilde|dot|ddot|text|mathrm|mathbf|mathit|mathcal|mathbb|operatorname|lambda|Lambda|omega|Omega|alpha|beta|gamma|Gamma|delta|Delta|epsilon|varepsilon|theta|Theta|phi|Phi|varphi|psi|Psi|chi|rho|sigma|Sigma|tau|mu|nu|pi|Pi|xi|Xi|zeta|eta|kappa|iota|partial|nabla|infty|cdot|cdots|ldots|times|div|pm|mp|leq|geq|neq|approx|equiv|sim|propto|perp|parallel|forall|exists|nexists|in|notin|subset|supset|subseteq|supseteq|cup|cap|wedge|vee|oplus|otimes|rightarrow|leftarrow|Rightarrow|Leftarrow|leftrightarrow|uparrow|downarrow|mapsto|to|quad|qquad|hspace|vspace|left|right|big|Big|bigg|Bigg|over|under|begin|end)/g,
+    '\\$1',
+  );
+
+  for (let i = 0; i < scripts.length; i++) {
+    const ph = `__SN${i}__`;
+    const idx = result.indexOf(ph);
+    if (idx !== -1) {
+      result = result.substring(0, idx) + scripts[i] + result.substring(idx + ph.length);
+    }
+  }
+  return result;
+}
+
 function patchHtmlForIframe(html: string): string {
+  // Normalize double-escaped LaTeX before rendering
+  html = normalizeDoubleEscapedLatex(html);
+
   const iframeCss = `<style data-iframe-patch>
   html, body {
     width: 100%;

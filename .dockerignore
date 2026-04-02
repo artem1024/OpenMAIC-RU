@@ -19,7 +19,7 @@ dist
 # env & secrets
 .env*
 !.env.example
-server-providers*.yml
+# server-providers.yml is needed for TTS config in Docker
 
 # misc
 assets

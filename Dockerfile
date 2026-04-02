@@ -35,7 +35,8 @@ ENV NODE_ENV=production
 ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 
-RUN apk add --no-cache libc6-compat cairo pango jpeg giflib librsvg
+RUN apk add --no-cache libc6-compat cairo pango jpeg giflib librsvg python3 py3-pip \
+    && pip install --break-system-packages edge-tts
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
@@ -43,6 +44,10 @@ RUN addgroup --system --gid 1001 nodejs && \
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+COPY server-providers.yml ./server-providers.yml
+
+# Writable data directory for classroom media/audio files
+RUN mkdir -p /app/data/classrooms && chown -R nextjs:nodejs /app/data
 
 USER nextjs
 

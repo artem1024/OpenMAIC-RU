@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useStageStore } from '@/lib/store';
 import { PENDING_SCENE_ID } from '@/lib/store/stage';
 import { useCanvasStore } from '@/lib/store/canvas';
@@ -43,6 +44,8 @@ export function Stage({
   onRetryOutline?: (outlineId: string) => Promise<void>;
 }) {
   const { t } = useI18n();
+  const searchParams = useSearchParams();
+  const isEmbedded = searchParams?.get('embedded') === '1';
   const { mode, getCurrentScene, scenes, currentSceneId, setCurrentSceneId, generatingOutlines } =
     useStageStore();
   const failedOutlines = useStageStore.use.failedOutlines();
@@ -667,9 +670,9 @@ export function Stage({
       }
     : null;
 
-  // Calculate scene viewer height (subtract Header's 80px height)
+  // Calculate scene viewer height (subtract Header height)
   const sceneViewerHeight = (() => {
-    const headerHeight = 80; // Header h-20 = 80px
+    const headerHeight = isEmbedded ? 40 : 80; // Embedded: h-10 = 40px, Normal: h-20 = 80px
     if (mode === 'playback') {
       return `calc(100% - ${headerHeight + 192}px)`; // Header + Roundtable
     }
@@ -678,13 +681,15 @@ export function Stage({
 
   return (
     <div className="flex-1 flex overflow-hidden bg-gray-50 dark:bg-gray-900">
-      {/* Scene Sidebar */}
-      <SceneSidebar
-        collapsed={sidebarCollapsed}
-        onCollapseChange={setSidebarCollapsed}
-        onSceneSelect={gatedSceneSwitch}
-        onRetryOutline={onRetryOutline}
-      />
+      {/* Scene Sidebar — hidden in embedded mode */}
+      {!isEmbedded && (
+        <SceneSidebar
+          collapsed={sidebarCollapsed}
+          onCollapseChange={setSidebarCollapsed}
+          onSceneSelect={gatedSceneSwitch}
+          onRetryOutline={onRetryOutline}
+        />
+      )}
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 relative">
@@ -840,12 +845,12 @@ export function Stage({
         )}
       </div>
 
-      {/* Chat Area */}
+      {/* Chat Area — collapsed by default in embedded mode */}
       <ChatArea
         ref={chatAreaRef}
         width={chatAreaWidth}
         onWidthChange={setChatAreaWidth}
-        collapsed={chatAreaCollapsed}
+        collapsed={isEmbedded || chatAreaCollapsed}
         onCollapseChange={setChatAreaCollapsed}
         activeBubbleId={activeBubbleId}
         onActiveBubble={(id) => setActiveBubbleId(id)}
