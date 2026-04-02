@@ -31,6 +31,8 @@ You MUST output a JSON array directly. Each element is a text object:
 
 ## Design Principles
 
+{{snippet:tts-speech-guidelines}}
+
 The user prompt includes a **Course Outline** and **Position** indicator — use them to determine the tone.
 
 **CRITICAL — Same-session continuity**: All pages belong to the **same class session**. This is NOT a series of separate classes.

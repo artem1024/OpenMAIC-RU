@@ -79,6 +79,8 @@ Initiate classroom discussion, suitable for post-quiz reflection.
 
 ### Speech Content
 
+{{snippet:tts-speech-guidelines}}
+
 Generate natural teaching speech. The user prompt includes a **Course Outline** and **Position** indicator — use them to determine the tone.
 
 **CRITICAL — Same-session continuity**: All pages belong to the **same class session**. This is NOT a series of separate classes.

@@ -92,6 +92,7 @@
 
 import type { TTSModelConfig } from './types';
 import { TTS_PROVIDERS, EDGE_TTS_VOICE_BY_GENDER } from './constants';
+import { YO_DICTIONARY } from './yo-dictionary';
 import { execFile } from 'child_process';
 import { readFile, unlink } from 'fs/promises';
 import { tmpdir } from 'os';
@@ -328,17 +329,318 @@ async function generateQwenTTS(config: TTSModelConfig, text: string): Promise<TT
 }
 
 /**
- * Normalize Russian text for TTS by expanding common abbreviations
+ * Convert number (1–39) to masculine ordinal in the given grammatical case.
+ * Returns null for unsupported numbers.
+ */
+type GramCase = 'nom' | 'gen' | 'dat' | 'inst' | 'prep';
+
+// [stem, true = nominative ends in -ой instead of -ый]
+const ORDINAL_STEMS: Record<number, [string, boolean]> = {
+  1: ['перв', false], 2: ['втор', true], 4: ['четвёрт', false],
+  5: ['пят', false], 6: ['шест', true], 7: ['седьм', true],
+  8: ['восьм', true], 9: ['девят', false], 10: ['десят', false],
+  11: ['одиннадцат', false], 12: ['двенадцат', false], 13: ['тринадцат', false],
+  14: ['четырнадцат', false], 15: ['пятнадцат', false], 16: ['шестнадцат', false],
+  17: ['семнадцат', false], 18: ['восемнадцат', false], 19: ['девятнадцат', false],
+  20: ['двадцат', false], 30: ['тридцат', false],
+};
+
+function toOrdinalMasc(n: number, gc: GramCase): string | null {
+  if (n >= 21 && n <= 29) {
+    const o = toOrdinalMasc(n % 10, gc);
+    return o ? `двадцать ${o}` : null;
+  }
+  if (n >= 31 && n <= 39) {
+    const o = toOrdinalMasc(n % 10, gc);
+    return o ? `тридцать ${o}` : null;
+  }
+  if (n === 3) {
+    return ({ nom: 'третий', gen: 'третьего', dat: 'третьему', inst: 'третьим', prep: 'третьем' } as Record<GramCase, string>)[gc];
+  }
+  const e = ORDINAL_STEMS[n];
+  if (!e) return null;
+  const [stem, soft] = e;
+  const endings: Record<GramCase, string> = {
+    nom: soft ? 'ой' : 'ый', gen: 'ого', dat: 'ому', inst: 'ым', prep: 'ом',
+  };
+  return stem + endings[gc];
+}
+
+/**
+ * Expand ordinal numbers in common Russian contexts.
+ * E.g. "в 18 веке" → "в восемнадцатом веке", "18-й" → "восемнадцатый"
+ */
+function expandOrdinalNumbers(text: string): string {
+  let r = text;
+
+  // JS \b doesn't work for Cyrillic — use lookarounds:
+  // (?<![а-яА-ЯёЁ]) = not preceded by Cyrillic
+  // (?![а-яА-ЯёЁ])  = not followed by Cyrillic
+
+  // Prepositional with "в/во": "в 18 веке" → "в восемнадцатом веке"
+  r = r.replace(
+    /(?<![а-яА-ЯёЁ])(во?)\s+(\d{1,2})\s+(веке|классе|уроке|разделе|столетии|параграфе|томе|этаже|курсе|этапе)(?![а-яА-ЯёЁ])/gi,
+    (m, prep, num, noun) => {
+      const o = toOrdinalMasc(parseInt(num), 'prep');
+      return o ? `${prep.toLowerCase()} ${o} ${noun.toLowerCase()}` : m;
+    },
+  );
+
+  // Prepositional with "на": "на 2 уроке"
+  r = r.replace(
+    /(?<![а-яА-ЯёЁ])(на)\s+(\d{1,2})\s+(уроке|этаже|курсе|этапе)(?![а-яА-ЯёЁ])/gi,
+    (m, prep, num, noun) => {
+      const o = toOrdinalMasc(parseInt(num), 'prep');
+      return o ? `${prep.toLowerCase()} ${o} ${noun.toLowerCase()}` : m;
+    },
+  );
+
+  // Dative with "к": "к 21 веку"
+  r = r.replace(
+    /(?<![а-яА-ЯёЁ])(к)\s+(\d{1,2})\s+(веку|классу|уроку)(?![а-яА-ЯёЁ])/gi,
+    (m, prep, num, noun) => {
+      const o = toOrdinalMasc(parseInt(num), 'dat');
+      return o ? `${prep.toLowerCase()} ${o} ${noun.toLowerCase()}` : m;
+    },
+  );
+
+  // Genitive: "18 века" (before nominative to avoid partial match)
+  r = r.replace(
+    /(?<!\d)(\d{1,2})\s+(века|класса|урока|раздела|столетия|тома|параграфа|этажа|курса)(?![а-яА-ЯёЁ])/gi,
+    (m, num, noun) => {
+      const o = toOrdinalMasc(parseInt(num), 'gen');
+      return o ? `${o} ${noun.toLowerCase()}` : m;
+    },
+  );
+
+  // Instrumental: "18 веком"
+  r = r.replace(
+    /(?<!\d)(\d{1,2})\s+(веком|классом|уроком|разделом|томом)(?![а-яА-ЯёЁ])/gi,
+    (m, num, noun) => {
+      const o = toOrdinalMasc(parseInt(num), 'inst');
+      return o ? `${o} ${noun.toLowerCase()}` : m;
+    },
+  );
+
+  // Nominative: "18 век" (last — noun forms above are longer, no ambiguity)
+  r = r.replace(
+    /(?<!\d)(\d{1,2})\s+(век|класс|урок|раздел|том|параграф|этаж|курс)(?![а-яА-ЯёЁ])/gi,
+    (m, num, noun) => {
+      const o = toOrdinalMasc(parseInt(num), 'nom');
+      return o ? `${o} ${noun.toLowerCase()}` : m;
+    },
+  );
+
+  // Hyphenated ordinal suffixes: "18-й" → "восемнадцатый"
+  const sfx: Array<[string, GramCase]> = [
+    ['го', 'gen'], ['му', 'dat'], ['ым', 'inst'], ['й', 'nom'], ['м', 'prep'],
+  ];
+  for (const [s, gc] of sfx) {
+    r = r.replace(
+      new RegExp(`(?<!\\d)(\\d{1,2})-${s}(?![а-яА-ЯёЁ])`, 'g'),
+      (m, num) => toOrdinalMasc(parseInt(num), gc) || m,
+    );
+  }
+
+  return r;
+}
+
+/**
+ * Restore ё in Russian words where it was written as е.
+ * Only uses safe, unambiguous replacements (no homograph risk).
+ */
+function restoreYo(text: string): string {
+  return text.replace(/[а-яА-ЯёЁ]+/g, (word) => {
+    const lower = word.toLowerCase();
+    const replacement = YO_DICTIONARY.get(lower);
+    if (!replacement) return word;
+    // Preserve ALL CAPS
+    if (word === word.toUpperCase()) {
+      return replacement.toUpperCase();
+    }
+    // Preserve capitalized first letter
+    if (word[0] === word[0].toUpperCase()) {
+      return replacement[0].toUpperCase() + replacement.slice(1);
+    }
+    return replacement;
+  });
+}
+
+/**
+ * Expand Russian abbreviations and acronyms for TTS.
+ */
+function expandAbbreviations(text: string): string {
+  let r = text;
+
+  // --- Dot-abbreviated words ---
+  // JS \b doesn't work for Cyrillic, use (?<![а-яА-ЯёЁ]) as word boundary
+  r = r.replace(/(?<![а-яА-ЯёЁ])до\s+н\.\s*э\./gi, 'до нашей эры');
+  r = r.replace(/(?<![а-яА-ЯёЁ])н\.\s*э\./gi, 'нашей эры');
+  r = r.replace(/(?<![а-яА-ЯёЁ])т\.д\./g, 'так далее');
+  r = r.replace(/(?<![а-яА-ЯёЁ])т\.п\./g, 'тому подобное');
+  r = r.replace(/(?<![а-яА-ЯёЁ])т\.е\./g, 'то есть');
+  r = r.replace(/(?<![а-яА-ЯёЁ])т\.к\./g, 'так как');
+  r = r.replace(/(?<![а-яА-ЯёЁ])напр\./g, 'например');
+  r = r.replace(/(?<![а-яА-ЯёЁ])др\./g, 'другие');
+  r = r.replace(/(?<![а-яА-ЯёЁ])см\./g, 'смотри');
+  r = r.replace(/(?<![а-яА-ЯёЁ])проф\./g, 'профессор');
+  r = r.replace(/(?<![а-яА-ЯёЁ])акад\./g, 'академик');
+  r = r.replace(/(?<![а-яА-ЯёЁ])д-р(?![а-яА-ЯёЁ])/g, 'доктор');
+  r = r.replace(/(?<![а-яА-ЯёЁ])гг\./g, 'годов');
+  r = r.replace(/(?<![а-яА-ЯёЁ])вв\./g, 'веков');
+
+  // --- Numeric abbreviations (no dot) ---
+  r = r.replace(/(?<![а-яА-ЯёЁ])млрд(?![а-яА-ЯёЁ])/g, 'миллиардов');
+  r = r.replace(/(?<![а-яА-ЯёЁ])млн(?![а-яА-ЯёЁ])/g, 'миллионов');
+  r = r.replace(/(?<![а-яА-ЯёЁ])тыс\./g, 'тысяч');
+  r = r.replace(/(?<![а-яА-ЯёЁ])руб\./g, 'рублей');
+  r = r.replace(/(?<![а-яА-ЯёЁ])коп\./g, 'копеек');
+
+  // --- Units (only after digits to avoid false matches) ---
+  r = r.replace(/(\d)\s*км\/ч(?![а-яА-ЯёЁ])/g, '$1 километров в час');
+  r = r.replace(/(\d)\s*км(?![а-яА-ЯёЁ\/])/g, '$1 километров');
+  r = r.replace(/(\d)\s*кг(?![а-яА-ЯёЁ])/g, '$1 килограммов');
+  r = r.replace(/(\d)\s*см(?![а-яА-ЯёЁ])/g, '$1 сантиметров');
+  r = r.replace(/(\d)\s*мм(?![а-яА-ЯёЁ])/g, '$1 миллиметров');
+  r = r.replace(/(\d)\s*м(?![а-яА-ЯёЁ\/])/g, '$1 метров');
+  r = r.replace(/(\d)\s*°C/g, '$1 градусов Цельсия');
+  r = r.replace(/(\d)\s*%/g, '$1 процентов');
+
+  // --- Cyrillic letter acronyms → spelled-out pronunciation ---
+  // Use (?<![а-яА-ЯёЁ]) and (?![а-яА-ЯёЁ]) as Cyrillic word boundaries
+  const cyrAcronyms: Record<string, string> = {
+    'ИИ': 'и-и',
+    'СССР': 'эс-эс-эс-эр',
+    'США': 'сэ-шэ-а',
+    'ООН': 'о-о-эн',
+    'ВВП': 'вэ-вэ-пэ',
+    'МВД': 'эм-вэ-дэ',
+    'ФСБ': 'эф-эс-бэ',
+    'ВОЗ': 'вэ-о-зэ',
+    'ДНК': 'дэ-эн-ка',
+    'РФ': 'эр-эф',
+    'ЕС': 'е-эс',
+    'ВУЗ': 'вуз',
+    'ВУЗЫ': 'вузы',
+    'НИИ': 'эн-и-и',
+    'КПД': 'ка-пэ-дэ',
+    'ЭВМ': 'э-вэ-эм',
+    'АЭС': 'а-э-эс',
+    'ГЭС': 'гэ-э-эс',
+    'ТЭЦ': 'тэ-э-цэ',
+  };
+  for (const [acronym, pronunciation] of Object.entries(cyrAcronyms)) {
+    r = r.replace(
+      new RegExp(`(?<![а-яА-ЯёЁ])${acronym}(?![а-яА-ЯёЁ])`, 'g'),
+      pronunciation,
+    );
+  }
+
+  return r;
+}
+
+/**
+ * Expand dates: "12 января" → "двенадцатого января"
+ */
+function expandDates(text: string): string {
+  const months = 'января|февраля|марта|апреля|мая|июня|июля|августа|сентября|октября|ноября|декабря';
+  return text.replace(
+    new RegExp(`(?<!\\d)(\\d{1,2})\\s+(${months})(?![а-яА-ЯёЁ])`, 'gi'),
+    (m, numStr, month) => {
+      const ord = toOrdinalMasc(parseInt(numStr), 'gen');
+      return ord ? `${ord} ${month.toLowerCase()}` : m;
+    },
+  );
+}
+
+/**
+ * Transliterate common English words/acronyms to Russian phonetic equivalents.
+ */
+function transliterateEnglish(text: string): string {
+  // Sorted longest-first to avoid partial matches (e.g. "JavaScript" before "Java")
+  const dict: Array<[RegExp, string]> = [
+    // Multi-word terms (must be first)
+    [/\bmachine\s+learning\b/gi, 'машин лёрнинг'],
+    [/\bdeep\s+learning\b/gi, 'дип лёрнинг'],
+    [/\bdata\s+science\b/gi, 'дата сайенс'],
+    [/\bopen\s+source\b/gi, 'опен сорс'],
+    [/\bbig\s+data\b/gi, 'биг дата'],
+    // Programming languages & frameworks
+    [/\bJavaScript\b/gi, 'ДжаваСкрипт'],
+    [/\bTypeScript\b/gi, 'ТайпСкрипт'],
+    [/\bPython\b/gi, 'Пайтон'],
+    [/\bDocker\b/gi, 'Докер'],
+    [/\bLinux\b/gi, 'Линукс'],
+    [/\bWindows\b/gi, 'Виндоус'],
+    [/\bAndroid\b/gi, 'Андроид'],
+    [/\bGoogle\b/gi, 'Гугл'],
+    [/\bGitHub\b/gi, 'ГитХаб'],
+    [/\bReact\b/g, 'Реакт'],
+    [/\bNext\.?js\b/gi, 'НекстДжиЭс'],
+    [/\bNode\.?js\b/gi, 'НоудДжиЭс'],
+    // Acronyms (Latin letter → Russian phonetic)
+    [/\bHTTPS\b/g, 'эйч-ти-ти-пи-эс'],
+    [/\bHTTP\b/g, 'эйч-ти-ти-пи'],
+    [/\bHTML\b/g, 'эйч-ти-эм-эль'],
+    [/\bCSS\b/g, 'си-эс-эс'],
+    [/\bAPI\b/g, 'эй-пи-ай'],
+    [/\bURL\b/g, 'ю-ар-эль'],
+    [/\bSQL\b/g, 'эс-кью-эль'],
+    [/\bPDF\b/g, 'пи-ди-эф'],
+    [/\bGPU\b/g, 'джи-пи-ю'],
+    [/\bCPU\b/g, 'си-пи-ю'],
+    [/\bSSD\b/g, 'эс-эс-ди'],
+    [/\bRAM\b/g, 'рам'],
+    [/\bLAN\b/g, 'лан'],
+    [/\bVPN\b/g, 'ви-пи-эн'],
+    [/\bUSB\b/g, 'ю-эс-би'],
+    [/\bIoT\b/g, 'ай-о-ти'],
+    [/\bAI\b/g, 'эй-ай'],
+    [/\bML\b/g, 'эм-эль'],
+    [/\bIT\b/g, 'ай-ти'],
+    [/\bPR\b/g, 'пи-ар'],
+    [/\bQR\b/g, 'кью-ар'],
+    // Common tech words
+    [/\bWi-?Fi\b/gi, 'вай-фай'],
+    [/\bBluetooth\b/gi, 'блютус'],
+    [/\bemail\b/gi, 'имейл'],
+    [/\be-mail\b/gi, 'имейл'],
+    [/\bonline\b/gi, 'онлайн'],
+    [/\boffline\b/gi, 'офлайн'],
+    [/\bsoftware\b/gi, 'софтвер'],
+    [/\bhardware\b/gi, 'хардвер'],
+    [/\bframework\b/gi, 'фреймворк'],
+    [/\bstartup\b/gi, 'стартап'],
+    [/\bchatbot\b/gi, 'чатбот'],
+    [/\bdataset\b/gi, 'датасет'],
+    [/\bfeedback\b/gi, 'фидбэк'],
+    [/\bserver\b/gi, 'сервер'],
+    [/\bbrowser\b/gi, 'браузер'],
+    [/\brouter\b/gi, 'роутер'],
+    [/\bcluster\b/gi, 'кластер'],
+    [/\btoken\b/gi, 'токен'],
+    [/\bprompt\b/gi, 'промпт'],
+  ];
+
+  let r = text;
+  for (const [pattern, replacement] of dict) {
+    r = r.replace(pattern, replacement);
+  }
+  return r;
+}
+
+/**
+ * Normalize Russian text for TTS.
+ * Pipeline: ёфикация → аббревиатуры → даты → порядковые числительные → англицизмы
  */
 function normalizeForTTS(text: string): string {
-  return text
-    .replace(/\bИИ\b/g, 'искусственный интеллект')
-    .replace(/\bт\.д\./g, 'так далее')
-    .replace(/\bт\.п\./g, 'тому подобное')
-    .replace(/\bт\.е\./g, 'то есть')
-    .replace(/\bнапр\./g, 'например')
-    .replace(/\bдр\./g, 'другие')
-    .replace(/\bсм\./g, 'смотри');
+  let result = text;
+  result = restoreYo(result);
+  result = expandAbbreviations(result);
+  result = expandDates(result);
+  result = expandOrdinalNumbers(result);
+  result = transliterateEnglish(result);
+  return result;
 }
 
 /**
@@ -519,6 +821,9 @@ export async function getCurrentTTSConfig(): Promise<TTSModelConfig> {
 
 // Re-export from constants for convenience
 export { getAllTTSProviders, getTTSProvider, getTTSVoices } from './constants';
+
+// Export normalizeForTTS for testing
+export { normalizeForTTS as _normalizeForTTS_test };
 
 /**
  * Escape XML special characters for SSML

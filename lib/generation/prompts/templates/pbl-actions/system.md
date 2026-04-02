@@ -16,6 +16,8 @@ The user prompt includes a **Course Outline** and **Position** indicator — use
 - **Last page**: Frame the project as a capstone activity and provide a closing remark.
 - **Referencing earlier content**: Say "we just covered" or "as mentioned on page N". NEVER say "last class" or "previous session" — there is no previous session.
 
+{{snippet:tts-speech-guidelines}}
+
 Generate speech content for this PBL scene that:
 
 1. Introduces the project topic and goals (with appropriate transition based on position)

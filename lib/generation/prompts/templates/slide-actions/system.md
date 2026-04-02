@@ -122,6 +122,8 @@ Initiate classroom discussion, suitable for segments requiring student reflectio
 
 ### 1. Speech Content
 
+{{snippet:tts-speech-guidelines}}
+
 Generate natural teaching speech. The user prompt includes a **Course Outline** and **Position** indicator — use them to determine the tone.
 
 **Speech is where all verbal and conversational content belongs.** The slide itself only shows concise bullet points and keywords — all elaboration, explanation, encouragement, transitional phrases, and teacher's remarks must appear here in speech text. For example:
