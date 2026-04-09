@@ -17,6 +17,8 @@ const log = createLogger('ResolveModel');
 export interface ResolvedModel extends ModelWithInfo {
   /** Original model string (e.g. "openai/gpt-4o-mini") */
   modelString: string;
+  /** Resolved provider ID (e.g. "openai", "ollama") */
+  providerId: string;
   /** Effective API key after server-side fallback resolution */
   apiKey: string;
 }
@@ -31,7 +33,6 @@ export function resolveModel(params: {
   apiKey?: string;
   baseUrl?: string;
   providerType?: string;
-  requiresApiKey?: boolean;
 }): ResolvedModel {
   const managed = isManagedProviderMode();
   const serverDefault = process.env.DEFAULT_MODEL || '';
@@ -56,6 +57,10 @@ export function resolveModel(params: {
 
   // In managed mode, ignore any client-supplied credentials.
   // Server-configured providers are authoritative.
+  //
+  // SSRF validation applies only to client-supplied base URLs.
+  // Server-configured URLs (e.g. OLLAMA_BASE_URL from env/YAML) flow through
+  // resolveBaseUrl() and bypass this check — they're trusted by the operator.
   let clientBaseUrl = params.baseUrl || undefined;
   let clientApiKey = params.apiKey || undefined;
 
@@ -68,6 +73,7 @@ export function resolveModel(params: {
     clientBaseUrl = undefined;
     clientApiKey = undefined;
   }
+
 
   if (clientBaseUrl && process.env.NODE_ENV === 'production') {
     const ssrfError = validateUrlForSSRFSync(clientBaseUrl);
@@ -88,16 +94,17 @@ export function resolveModel(params: {
     baseUrl,
     proxy,
     providerType: params.providerType as 'openai' | 'anthropic' | 'google' | undefined,
-    requiresApiKey: params.requiresApiKey,
   });
 
-  return { model, modelInfo, modelString, apiKey };
+  return { model, modelInfo, modelString, providerId, apiKey };
 }
 
 /**
  * Resolve a language model from standard request headers.
  *
- * Reads: x-model, x-api-key, x-base-url, x-provider-type, x-requires-api-key
+ * Reads: x-model, x-api-key, x-base-url, x-provider-type
+ * Note: requiresApiKey is derived server-side from the provider registry,
+ * never from client headers, to prevent auth bypass.
  */
 export function resolveModelFromHeaders(req: NextRequest): ResolvedModel {
   // In managed mode, strip provider credentials from headers.
@@ -118,6 +125,5 @@ export function resolveModelFromHeaders(req: NextRequest): ResolvedModel {
     apiKey: managed ? undefined : clientApiKey,
     baseUrl: managed ? undefined : clientBaseUrl,
     providerType: req.headers.get('x-provider-type') || undefined,
-    requiresApiKey: req.headers.get('x-requires-api-key') === 'true' ? true : undefined,
   });
 }
