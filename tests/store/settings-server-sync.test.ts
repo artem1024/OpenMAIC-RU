@@ -48,7 +48,10 @@ vi.mock('@/lib/audio/constants', () => ({
   DEFAULT_TTS_VOICES: {},
 }));
 
-vi.mock('@/lib/audio/types', () => ({}));
+vi.mock('@/lib/audio/types', () => ({
+  isCustomTTSProvider: (id: string) => id.startsWith('custom-tts-'),
+  isCustomASRProvider: (id: string) => id.startsWith('custom-asr-'),
+}));
 
 vi.mock('@/lib/media/image-providers', () => ({
   IMAGE_PROVIDERS: {},

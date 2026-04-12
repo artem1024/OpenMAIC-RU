@@ -91,6 +91,7 @@
  */
 
 import type { TTSModelConfig } from './types';
+import { isCustomTTSProvider } from './types';
 import { TTS_PROVIDERS, EDGE_TTS_VOICE_BY_GENDER } from './constants';
 import { YO_DICTIONARY } from './yo-dictionary';
 import { execFile } from 'child_process';
@@ -114,13 +115,10 @@ export async function generateTTS(
   config: TTSModelConfig,
   text: string,
 ): Promise<TTSGenerationResult> {
-  const provider = TTS_PROVIDERS[config.providerId];
-  if (!provider) {
-    throw new Error(`Unknown TTS provider: ${config.providerId}`);
-  }
+  const provider = TTS_PROVIDERS[config.providerId as keyof typeof TTS_PROVIDERS];
 
-  // Validate API key if required
-  if (provider.requiresApiKey && !config.apiKey) {
+  // Validate API key if required (only for built-in providers with known config)
+  if (provider?.requiresApiKey && !config.apiKey) {
     throw new Error(`API key required for TTS provider: ${config.providerId}`);
   }
 
@@ -152,6 +150,9 @@ export async function generateTTS(
       );
 
     default:
+      if (isCustomTTSProvider(config.providerId)) {
+        return await generateOpenAITTS(config, text);
+      }
       throw new Error(`Unsupported TTS provider: ${config.providerId}`);
   }
 }
@@ -957,7 +958,7 @@ export async function getCurrentTTSConfig(): Promise<TTSModelConfig> {
   return {
     providerId: ttsProviderId,
     apiKey: providerConfig?.apiKey,
-    baseUrl: providerConfig?.baseUrl,
+    baseUrl: providerConfig?.baseUrl || providerConfig?.customDefaultBaseUrl,
     voice: ttsVoice,
     speed: ttsSpeed,
   };

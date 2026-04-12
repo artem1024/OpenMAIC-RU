@@ -712,12 +712,19 @@ export async function generateTTSForClassroom(
 
   const runPass = async (providerId: TTSProviderId, isPrimary: boolean): Promise<void> => {
     const apiKey = resolveTTSApiKey(providerId);
-    if (!apiKey && TTS_PROVIDERS[providerId]?.requiresApiKey) {
+    if (
+      !apiKey &&
+      TTS_PROVIDERS[providerId as keyof typeof TTS_PROVIDERS]?.requiresApiKey
+    ) {
       throw new Error(`No API key for TTS provider "${providerId}"`);
     }
-    const ttsBaseUrl = resolveTTSBaseUrl(providerId) || TTS_PROVIDERS[providerId]?.defaultBaseUrl;
-    const voice = DEFAULT_TTS_VOICES[providerId] || 'default';
-    const format = TTS_PROVIDERS[providerId]?.supportedFormats?.[0] || 'mp3';
+    const ttsBaseUrl =
+      resolveTTSBaseUrl(providerId) ||
+      TTS_PROVIDERS[providerId as keyof typeof TTS_PROVIDERS]?.defaultBaseUrl;
+    const voice =
+      DEFAULT_TTS_VOICES[providerId as keyof typeof DEFAULT_TTS_VOICES] || 'default';
+    const format =
+      TTS_PROVIDERS[providerId as keyof typeof TTS_PROVIDERS]?.supportedFormats?.[0] || 'mp3';
 
     for (const scene of scenes) {
       if (!scene.actions) continue;

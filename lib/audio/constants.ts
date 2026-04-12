@@ -26,12 +26,34 @@
  */
 
 import type {
+  BuiltInTTSProviderId,
   TTSProviderId,
   TTSProviderConfig,
   TTSVoiceInfo,
+  BuiltInASRProviderId,
   ASRProviderId,
   ASRProviderConfig,
 } from './types';
+
+/**
+ * Default supported languages for custom OpenAI-compatible ASR providers.
+ * A practical subset of commonly used languages + auto-detect.
+ */
+export const CUSTOM_ASR_DEFAULT_LANGUAGES = [
+  'auto',
+  'zh',
+  'en',
+  'ja',
+  'ko',
+  'es',
+  'fr',
+  'de',
+  'ru',
+  'ar',
+  'pt',
+  'it',
+  'hi',
+];
 
 /**
  * TTS Provider Registry
@@ -39,7 +61,7 @@ import type {
  * Central registry for all TTS providers.
  * Keep in sync with TTSProviderId type definition.
  */
-export const TTS_PROVIDERS: Record<TTSProviderId, TTSProviderConfig> = {
+export const TTS_PROVIDERS: Record<BuiltInTTSProviderId, TTSProviderConfig> = {
   'openai-tts': {
     id: 'openai-tts',
     name: 'OpenAI TTS',
@@ -783,7 +805,7 @@ export const TTS_PROVIDERS: Record<TTSProviderId, TTSProviderConfig> = {
  * Central registry for all ASR providers.
  * Keep in sync with ASRProviderId type definition.
  */
-export const ASR_PROVIDERS: Record<ASRProviderId, ASRProviderConfig> = {
+export const ASR_PROVIDERS: Record<BuiltInASRProviderId, ASRProviderConfig> = {
   'openai-whisper': {
     id: 'openai-whisper',
     name: 'OpenAI Whisper',
@@ -967,24 +989,10 @@ export const ASR_PROVIDERS: Record<ASRProviderId, ASRProviderConfig> = {
 };
 
 /**
- * Get all available TTS providers
- */
-export function getAllTTSProviders(): TTSProviderConfig[] {
-  return Object.values(TTS_PROVIDERS);
-}
-
-/**
- * Get TTS provider by ID
- */
-export function getTTSProvider(providerId: TTSProviderId): TTSProviderConfig | undefined {
-  return TTS_PROVIDERS[providerId];
-}
-
-/**
  * Default voice for each TTS provider.
  * Used when switching providers or testing a non-active provider.
  */
-export const DEFAULT_TTS_VOICES: Record<TTSProviderId, string> = {
+export const DEFAULT_TTS_VOICES: Record<BuiltInTTSProviderId, string> = {
   'openai-tts': 'alloy',
   'azure-tts': 'zh-CN-XiaoxiaoNeural',
   'glm-tts': 'tongtong',
@@ -1005,29 +1013,69 @@ export const EDGE_TTS_VOICE_BY_GENDER: Record<'male' | 'female', string> = {
 };
 
 /**
+ * Get all available TTS providers (built-in + custom)
+ */
+export function getAllTTSProviders(
+  customProviders?: Record<string, TTSProviderConfig>,
+): TTSProviderConfig[] {
+  const builtIn = Object.values(TTS_PROVIDERS);
+  const custom = customProviders ? Object.values(customProviders) : [];
+  return [...builtIn, ...custom];
+}
+
+/**
+ * Get TTS provider by ID (checks built-in first, then custom)
+ */
+export function getTTSProvider(
+  providerId: TTSProviderId,
+  customProviders?: Record<string, TTSProviderConfig>,
+): TTSProviderConfig | undefined {
+  if (providerId in TTS_PROVIDERS) {
+    return TTS_PROVIDERS[providerId as BuiltInTTSProviderId];
+  }
+  return customProviders?.[providerId];
+}
+
+/**
  * Get voices for a specific TTS provider
  */
-export function getTTSVoices(providerId: TTSProviderId): TTSVoiceInfo[] {
-  return TTS_PROVIDERS[providerId]?.voices || [];
+export function getTTSVoices(
+  providerId: TTSProviderId,
+  customProviders?: Record<string, TTSProviderConfig>,
+): TTSVoiceInfo[] {
+  return getTTSProvider(providerId, customProviders)?.voices || [];
 }
 
 /**
- * Get all available ASR providers
+ * Get all available ASR providers (built-in + custom)
  */
-export function getAllASRProviders(): ASRProviderConfig[] {
-  return Object.values(ASR_PROVIDERS);
+export function getAllASRProviders(
+  customProviders?: Record<string, ASRProviderConfig>,
+): ASRProviderConfig[] {
+  const builtIn = Object.values(ASR_PROVIDERS);
+  const custom = customProviders ? Object.values(customProviders) : [];
+  return [...builtIn, ...custom];
 }
 
 /**
- * Get ASR provider by ID
+ * Get ASR provider by ID (checks built-in first, then custom)
  */
-export function getASRProvider(providerId: ASRProviderId): ASRProviderConfig | undefined {
-  return ASR_PROVIDERS[providerId];
+export function getASRProvider(
+  providerId: ASRProviderId,
+  customProviders?: Record<string, ASRProviderConfig>,
+): ASRProviderConfig | undefined {
+  if (providerId in ASR_PROVIDERS) {
+    return ASR_PROVIDERS[providerId as BuiltInASRProviderId];
+  }
+  return customProviders?.[providerId];
 }
 
 /**
  * Get supported languages for a specific ASR provider
  */
-export function getASRSupportedLanguages(providerId: ASRProviderId): string[] {
-  return ASR_PROVIDERS[providerId]?.supportedLanguages || [];
+export function getASRSupportedLanguages(
+  providerId: ASRProviderId,
+  customProviders?: Record<string, ASRProviderConfig>,
+): string[] {
+  return getASRProvider(providerId, customProviders)?.supportedLanguages || [];
 }
