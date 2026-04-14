@@ -1,0 +1,3 @@
+[submodule "scripts/data/proper_nouns"]
+	path = scripts/data/proper_nouns
+	url = https://github.com/NickZaitsev/proper-noun-stress-dictionaries.git
