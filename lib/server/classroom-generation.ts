@@ -40,6 +40,7 @@ export interface GenerateClassroomInput {
   enableVideoGeneration?: boolean;
   enableTTS?: boolean;
   agentMode?: 'default' | 'generate';
+  modelString?: string;
 }
 
 export type ClassroomGenerationStep =
@@ -177,7 +178,7 @@ export async function generateClassroom(
     scenesGenerated: 0,
   });
 
-  const { model: languageModel, modelInfo, modelString } = resolveModel({});
+  const { model: languageModel, modelInfo, modelString } = resolveModel({ modelString: input.modelString });
   log.info(`Using server-configured model: ${modelString}`);
 
   // Fail fast if the resolved provider has no API key configured

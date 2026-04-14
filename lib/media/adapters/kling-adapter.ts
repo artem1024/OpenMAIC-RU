@@ -7,8 +7,10 @@
  * - Submit: POST /v1/videos/text2video
  * - Poll:   GET  /v1/videos/text2video/{task_id}
  *
- * Authentication: JWT Bearer token generated from Access Key + Secret Key.
- * The apiKey field should be formatted as "accessKey:secretKey".
+ * Authentication:
+ * - Direct Kling API: JWT Bearer token generated from Access Key + Secret Key.
+ *   The apiKey field should be formatted as "accessKey:secretKey".
+ * - Gateway compatibility mode: plain Bearer token when baseUrl points to /kling.
  *
  * Supported models:
  * - kling-v2-6     (latest)
@@ -70,6 +72,24 @@ function parseApiKey(apiKey: string): { accessKey: string; secretKey: string } {
   };
 }
 
+function isGatewayKlingBaseUrl(baseUrl: string): boolean {
+  try {
+    const pathname = new URL(baseUrl).pathname.replace(/\/+$/, '');
+    return pathname === '/kling' || pathname.endsWith('/kling');
+  } catch {
+    return /\/kling\/?$/.test(baseUrl);
+  }
+}
+
+function buildBearerToken(baseUrl: string, apiKey: string): string {
+  if (isGatewayKlingBaseUrl(baseUrl)) {
+    return apiKey;
+  }
+
+  const { accessKey, secretKey } = parseApiKey(apiKey);
+  return generateJWT(accessKey, secretKey);
+}
+
 // ---------------------------------------------------------------------------
 // REST types
 // ---------------------------------------------------------------------------
@@ -129,8 +149,7 @@ export async function testKlingConnectivity(
 ): Promise<{ success: boolean; message: string }> {
   const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
   try {
-    const { accessKey, secretKey } = parseApiKey(config.apiKey);
-    const token = generateJWT(accessKey, secretKey);
+    const token = buildBearerToken(baseUrl, config.apiKey);
     // Use a GET to a non-existent task to validate auth
     const response = await fetch(`${baseUrl}/v1/videos/text2video/connectivity-test`, {
       method: 'GET',
@@ -231,8 +250,7 @@ export async function generateWithKling(
 ): Promise<VideoGenerationResult> {
   const model = config.model || DEFAULT_MODEL;
   const baseUrl = config.baseUrl || DEFAULT_BASE_URL;
-  const { accessKey, secretKey } = parseApiKey(config.apiKey);
-  const token = generateJWT(accessKey, secretKey);
+  const token = buildBearerToken(baseUrl, config.apiKey);
 
   // 1. Submit
   const taskId = await submitTask(baseUrl, token, model, options);

@@ -96,7 +96,8 @@ import { YO_DICTIONARY } from './yo-dictionary';
 import { execFile } from 'child_process';
 import { readFile, unlink } from 'fs/promises';
 import { tmpdir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
 /**
  * Result of TTS generation
@@ -467,6 +468,18 @@ function restoreYo(text: string): string {
 }
 
 /**
+ * Agree a unit noun with a number: 1 миллиард, 3 миллиарда, 5 миллиардов.
+ */
+function agreeUnit(n: number, one: string, few: string, many: string): string {
+  const absN = Math.abs(n) % 100;
+  if (absN >= 11 && absN <= 19) return many;
+  const last = absN % 10;
+  if (last === 1) return one;
+  if (last >= 2 && last <= 4) return few;
+  return many;
+}
+
+/**
  * Expand Russian abbreviations and acronyms for TTS.
  */
 function expandAbbreviations(text: string): string {
@@ -483,13 +496,23 @@ function expandAbbreviations(text: string): string {
   r = r.replace(/(?<![а-яА-ЯёЁ])напр\./g, 'например');
   r = r.replace(/(?<![а-яА-ЯёЁ])др\./g, 'другие');
   r = r.replace(/(?<![а-яА-ЯёЁ])см\./g, 'смотри');
-  r = r.replace(/(?<![а-яА-ЯёЁ])проф\./g, 'профессор');
-  r = r.replace(/(?<![а-яА-ЯёЁ])акад\./g, 'академик');
+  r = r.replace(/(?<![а-яА-ЯёЁ])проф\./gi, 'профессор');
+  r = r.replace(/(?<![а-яА-ЯёЁ])акад\./gi, 'академик');
   r = r.replace(/(?<![а-яА-ЯёЁ])д-р(?![а-яА-ЯёЁ])/g, 'доктор');
   r = r.replace(/(?<![а-яА-ЯёЁ])гг\./g, 'годов');
   r = r.replace(/(?<![а-яА-ЯёЁ])вв\./g, 'веков');
 
-  // --- Numeric abbreviations (no dot) ---
+  // --- Numeric abbreviations (no dot) — with number agreement ---
+  r = r.replace(/(\d+)\s*млрд(?![а-яА-ЯёЁ])/g, (_m, num) => {
+    return `${num} ${agreeUnit(parseInt(num), 'миллиард', 'миллиарда', 'миллиардов')}`;
+  });
+  r = r.replace(/(\d+)\s*млн(?![а-яА-ЯёЁ])/g, (_m, num) => {
+    return `${num} ${agreeUnit(parseInt(num), 'миллион', 'миллиона', 'миллионов')}`;
+  });
+  r = r.replace(/(\d+)\s*тыс\./g, (_m, num) => {
+    return `${num} ${agreeUnit(parseInt(num), 'тысяча', 'тысячи', 'тысяч')}`;
+  });
+  // Fallback without preceding number
   r = r.replace(/(?<![а-яА-ЯёЁ])млрд(?![а-яА-ЯёЁ])/g, 'миллиардов');
   r = r.replace(/(?<![а-яА-ЯёЁ])млн(?![а-яА-ЯёЁ])/g, 'миллионов');
   r = r.replace(/(?<![а-яА-ЯёЁ])тыс\./g, 'тысяч');
@@ -509,25 +532,25 @@ function expandAbbreviations(text: string): string {
   // --- Cyrillic letter acronyms → spelled-out pronunciation ---
   // Use (?<![а-яА-ЯёЁ]) and (?![а-яА-ЯёЁ]) as Cyrillic word boundaries
   const cyrAcronyms: Record<string, string> = {
-    'ИИ': 'и-и',
+    'ИИ': 'и-и,',
     'СССР': 'эс-эс-эс-эр',
     'США': 'сэ-шэ-а',
-    'ООН': 'о-о-эн',
+    'ООН': 'оон',
     'ВВП': 'вэ-вэ-пэ',
     'МВД': 'эм-вэ-дэ',
     'ФСБ': 'эф-эс-бэ',
-    'ВОЗ': 'вэ-о-зэ',
+    'ВОЗ': 'воз',
     'ДНК': 'дэ-эн-ка',
     'РФ': 'эр-эф',
     'ЕС': 'е-эс',
     'ВУЗ': 'вуз',
     'ВУЗЫ': 'вузы',
-    'НИИ': 'эн-и-и',
-    'КПД': 'ка-пэ-дэ',
+    'НИИ': 'ни-и,',
+    'КПД': 'капэдэ',
     'ЭВМ': 'э-вэ-эм',
-    'АЭС': 'а-э-эс',
-    'ГЭС': 'гэ-э-эс',
-    'ТЭЦ': 'тэ-э-цэ',
+    'АЭС': 'аэс',
+    'ГЭС': 'гэс',
+    'ТЭЦ': 'тэц',
   };
   for (const [acronym, pronunciation] of Object.entries(cyrAcronyms)) {
     r = r.replace(
@@ -565,6 +588,13 @@ function transliterateEnglish(text: string): string {
     [/\bdata\s+science\b/gi, 'дата сайенс'],
     [/\bopen\s+source\b/gi, 'опен сорс'],
     [/\bbig\s+data\b/gi, 'биг дата'],
+    // AI products (before acronyms to avoid partial matches)
+    [/\bChatGPT\b/gi, 'ЧатДжиПиТи'],
+    [/\bGPT[-‑]?4[oо]\b/gi, 'джи-пи-ти-четыре-о'],
+    [/\bGPT[-‑]?4\b/gi, 'джи-пи-ти четыре'],
+    [/\bGPT[-‑]?3\.5\b/gi, 'джи-пи-ти три пять'],
+    [/\bGPT[-‑]?3\b/gi, 'джи-пи-ти три'],
+    [/\bGPT\b/g, 'джи-пи-ти'],
     // Programming languages & frameworks
     [/\bJavaScript\b/gi, 'ДжаваСкрипт'],
     [/\bTypeScript\b/gi, 'ТайпСкрипт'],
@@ -576,8 +606,8 @@ function transliterateEnglish(text: string): string {
     [/\bGoogle\b/gi, 'Гугл'],
     [/\bGitHub\b/gi, 'ГитХаб'],
     [/\bReact\b/g, 'Реакт'],
-    [/\bNext\.?js\b/gi, 'НекстДжиЭс'],
-    [/\bNode\.?js\b/gi, 'НоудДжиЭс'],
+    [/\bNext\.?js\b/gi, 'НекстДжейЭс'],
+    [/\bNode\.?js\b/gi, 'НодДжейЭс'],
     // Acronyms (Latin letter → Russian phonetic)
     [/\bHTTPS\b/g, 'эйч-ти-ти-пи-эс'],
     [/\bHTTP\b/g, 'эйч-ти-ти-пи'],
@@ -596,6 +626,7 @@ function transliterateEnglish(text: string): string {
     [/\bUSB\b/g, 'ю-эс-би'],
     [/\bIoT\b/g, 'ай-о-ти'],
     [/\bAI\b/g, 'эй-ай'],
+    [/\bLLM\b/g, 'эл-эл-эм'],
     [/\bML\b/g, 'эм-эль'],
     [/\bIT\b/g, 'ай-ти'],
     [/\bPR\b/g, 'пи-ар'],
@@ -619,7 +650,7 @@ function transliterateEnglish(text: string): string {
     [/\brouter\b/gi, 'роутер'],
     [/\bcluster\b/gi, 'кластер'],
     [/\btoken\b/gi, 'токен'],
-    [/\bprompt\b/gi, 'промпт'],
+    [/\bprompt\b/gi, 'промт'],
   ];
 
   let r = text;
@@ -630,17 +661,48 @@ function transliterateEnglish(text: string): string {
 }
 
 /**
- * Normalize Russian text for TTS.
- * Pipeline: ёфикация → аббревиатуры → даты → порядковые числительные → англицизмы
+ * Normalize Russian text for TTS using Python normalizer (num2words + RUAccent + proper nouns).
+ * Falls back to inline TS rules if Python normalizer is unavailable.
  */
-function normalizeForTTS(text: string): string {
+const NORMALIZER_SCRIPT = join(dirname(dirname(dirname(fileURLToPath(import.meta.url)))), 'scripts', 'normalizer.py');
+
+function normalizeForTTSSync(text: string): string {
+  // Inline fallback: basic rules if Python normalizer fails
   let result = text;
   result = restoreYo(result);
   result = expandAbbreviations(result);
   result = expandDates(result);
   result = expandOrdinalNumbers(result);
   result = transliterateEnglish(result);
+  result = result.replace(/&/g, ' энд ');
+  // Handle literal pluses before they get confused with stress marks
+  result = result.replace(/(\d)\s*\+\s*(\d)/g, '$1 плюс $2');
+  result = result.replace(/([a-zA-Z])\+/g, '$1 плюс');
+  // Final cleanup: remove all stress marks (+) to avoid audible "plus" sounds
+  result = result.replace(/\+/g, '');
   return result;
+}
+
+async function normalizeForTTS(text: string): Promise<string> {
+  try {
+    return await new Promise<string>((resolve, reject) => {
+      execFile(
+        'python3',
+        [NORMALIZER_SCRIPT, text],
+        { timeout: 30000 },
+        (error, stdout, _stderr) => {
+          if (error) {
+            reject(error);
+          } else {
+            resolve(stdout.trim());
+          }
+        },
+      );
+    });
+  } catch {
+    // Fallback to inline TS rules
+    return normalizeForTTSSync(text);
+  }
 }
 
 /**
@@ -699,14 +761,18 @@ function resolveEdgeTTSVoice(configVoice: string, speakerName?: string): string 
   return EDGE_TTS_VOICE_BY_GENDER[gender];
 }
 
+const EDGE_TTS_MAX_RETRIES = 5;
+const EDGE_TTS_BASE_DELAY_MS = 10_000; // 10s, doubles each retry: 10, 20, 40, 80, 160
+
 /**
  * Edge TTS implementation (CLI-based, free, no API key required)
+ * Includes retry with exponential backoff for 503/429 transient errors.
  */
 async function generateEdgeTTS(
   config: TTSModelConfig,
   text: string,
 ): Promise<TTSGenerationResult> {
-  const normalizedText = normalizeForTTS(text);
+  const normalizedText = await normalizeForTTS(text);
   const voice = resolveEdgeTTSVoice(config.voice, config.speakerName);
   const speed = config.speed || 1.0;
 
@@ -714,33 +780,45 @@ async function generateEdgeTTS(
   const ratePercent = Math.round((speed - 1.0) * 100);
   const rateStr = ratePercent >= 0 ? `+${ratePercent}%` : `${ratePercent}%`;
 
-  const tmpFile = join(tmpdir(), `edge-tts-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`);
+  for (let attempt = 0; attempt < EDGE_TTS_MAX_RETRIES; attempt++) {
+    const tmpFile = join(tmpdir(), `edge-tts-${Date.now()}-${Math.random().toString(36).slice(2)}.mp3`);
 
-  try {
-    await new Promise<void>((resolve, reject) => {
-      execFile(
-        'edge-tts',
-        ['--text', normalizedText, '--voice', voice, '--rate', rateStr, '--write-media', tmpFile],
-        { timeout: 30000 },
-        (error, _stdout, stderr) => {
-          if (error) {
-            reject(new Error(`Edge TTS error: ${stderr || error.message}`));
-          } else {
-            resolve();
-          }
-        },
-      );
-    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        execFile(
+          'edge-tts',
+          ['--text', normalizedText, '--voice', voice, '--rate', rateStr, '--write-media', tmpFile],
+          { timeout: 60000 },
+          (error, _stdout, stderr) => {
+            if (error) {
+              reject(new Error(`Edge TTS error: ${stderr || error.message}`));
+            } else {
+              resolve();
+            }
+          },
+        );
+      });
 
-    const audioBuffer = await readFile(tmpFile);
-    return {
-      audio: new Uint8Array(audioBuffer),
-      format: 'mp3',
-    };
-  } finally {
-    // Clean up temp file
-    await unlink(tmpFile).catch(() => {});
+      const audioBuffer = await readFile(tmpFile);
+      await unlink(tmpFile).catch(() => {});
+      return {
+        audio: new Uint8Array(audioBuffer),
+        format: 'mp3',
+      };
+    } catch (err) {
+      await unlink(tmpFile).catch(() => {});
+      const delay = EDGE_TTS_BASE_DELAY_MS * Math.pow(2, attempt);
+      if (attempt < EDGE_TTS_MAX_RETRIES - 1) {
+        console.warn(`[edge-tts] Attempt ${attempt + 1}/${EDGE_TTS_MAX_RETRIES} failed: ${err}. Retrying in ${delay / 1000}s...`);
+        await new Promise(r => setTimeout(r, delay));
+      } else {
+        throw new Error(`Edge TTS failed after ${EDGE_TTS_MAX_RETRIES} attempts: ${err}`);
+      }
+    }
   }
+
+  // Unreachable, but TypeScript needs it
+  throw new Error('Edge TTS: unexpected retry loop exit');
 }
 
 /**
@@ -823,7 +901,7 @@ export async function getCurrentTTSConfig(): Promise<TTSModelConfig> {
 export { getAllTTSProviders, getTTSProvider, getTTSVoices } from './constants';
 
 // Export normalizeForTTS for testing
-export { normalizeForTTS as _normalizeForTTS_test };
+export { normalizeForTTSSync as _normalizeForTTS_test };
 
 /**
  * Escape XML special characters for SSML

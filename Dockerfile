@@ -36,7 +36,7 @@ ENV HOSTNAME=0.0.0.0
 ENV PORT=3000
 
 RUN apk add --no-cache libc6-compat cairo pango jpeg giflib librsvg python3 py3-pip \
-    && pip install --break-system-packages edge-tts
+    && pip install --break-system-packages edge-tts num2words ruaccent
 
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
