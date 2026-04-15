@@ -22,6 +22,10 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
+    if (process.env.NODE_ENV === 'production') {
+      return apiError('INVALID_REQUEST', 403, 'Proxy media is disabled in production');
+    }
+
     const { url } = await request.json();
 
     if (!url || typeof url !== 'string') {
