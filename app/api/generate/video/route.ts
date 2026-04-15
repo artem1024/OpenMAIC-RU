@@ -31,6 +31,9 @@ export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
   try {
+    const idempotencyKey = request.headers.get('idempotency-key');
+    if (idempotencyKey) log.info(`Idempotency-Key: ${idempotencyKey}`);
+
     const body = (await request.json()) as VideoGenerationOptions;
 
     if (!body.prompt) {

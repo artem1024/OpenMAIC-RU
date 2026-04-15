@@ -25,6 +25,27 @@ class MediaApiError extends Error {
 }
 
 /**
+ * Build a deterministic idempotency key for media generation.
+ * Same inputs -> same key (dedup on retry).
+ * Bumped retryCount -> new key (explicit user regeneration).
+ */
+function buildIdempotencyKey(
+  stageId: string,
+  elementId: string,
+  type: 'image' | 'video',
+  provider: string,
+  retryCount: number,
+): string {
+  const raw = `${stageId}:${elementId}:${type}:${provider}:v${retryCount}`;
+  // Simple deterministic hash - no crypto needed, just dedup.
+  let hash = 0;
+  for (let i = 0; i < raw.length; i++) {
+    hash = ((hash << 5) - hash + raw.charCodeAt(i)) | 0;
+  }
+  return `mgo-${Math.abs(hash).toString(36)}-${elementId}`;
+}
+
+/**
  * Launch media generation for all mediaGenerations declared in outlines.
  * Runs in parallel with content/action generation — does not block.
  */
@@ -115,11 +136,11 @@ async function generateSingleMedia(
     let mimeType: string;
 
     if (req.type === 'image') {
-      const result = await callImageApi(req, abortSignal);
+      const result = await callImageApi(req, stageId, abortSignal);
       resultUrl = result.url;
       mimeType = 'image/png';
     } else {
-      const result = await callVideoApi(req, abortSignal);
+      const result = await callVideoApi(req, stageId, abortSignal);
       resultUrl = result.url;
       posterUrl = result.poster;
       mimeType = 'video/mp4';
@@ -185,16 +206,29 @@ async function generateSingleMedia(
 
 async function callImageApi(
   req: MediaGenerationRequest,
+  stageId: string,
   abortSignal?: AbortSignal,
 ): Promise<{ url: string }> {
   const settings = useSettingsStore.getState();
+  const store = useMediaGenerationStore.getState();
+  const task = store.getTask(req.elementId);
+  const retryCount = task?.retryCount ?? 0;
+  const providerId = settings.imageProviderId;
+  const idempotencyKey = buildIdempotencyKey(
+    stageId,
+    req.elementId,
+    'image',
+    providerId,
+    retryCount,
+  );
   const providerConfig = settings.imageProvidersConfig?.[settings.imageProviderId];
 
   const response = await fetch('/api/generate/image', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-image-provider': settings.imageProviderId || '',
+      'Idempotency-Key': idempotencyKey,
+      'x-image-provider': providerId || '',
       'x-image-model': settings.imageModelId || '',
       'x-api-key': providerConfig?.apiKey || '',
       'x-base-url': providerConfig?.baseUrl || '',
@@ -225,16 +259,29 @@ async function callImageApi(
 
 async function callVideoApi(
   req: MediaGenerationRequest,
+  stageId: string,
   abortSignal?: AbortSignal,
 ): Promise<{ url: string; poster?: string }> {
   const settings = useSettingsStore.getState();
+  const store = useMediaGenerationStore.getState();
+  const task = store.getTask(req.elementId);
+  const retryCount = task?.retryCount ?? 0;
+  const providerId = settings.videoProviderId;
+  const idempotencyKey = buildIdempotencyKey(
+    stageId,
+    req.elementId,
+    'video',
+    providerId,
+    retryCount,
+  );
   const providerConfig = settings.videoProvidersConfig?.[settings.videoProviderId];
 
   const response = await fetch('/api/generate/video', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-video-provider': settings.videoProviderId || '',
+      'Idempotency-Key': idempotencyKey,
+      'x-video-provider': providerId || '',
       'x-video-model': settings.videoModelId || '',
       'x-api-key': providerConfig?.apiKey || '',
       'x-base-url': providerConfig?.baseUrl || '',

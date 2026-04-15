@@ -29,6 +29,9 @@ export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {
+    const idempotencyKey = request.headers.get('idempotency-key');
+    if (idempotencyKey) log.info(`Idempotency-Key: ${idempotencyKey}`);
+
     const body = (await request.json()) as ImageGenerationOptions;
 
     if (!body.prompt) {
