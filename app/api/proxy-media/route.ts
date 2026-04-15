@@ -12,7 +12,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
+import { ssrfSafeFetch } from '@/lib/server/ssrf-guard';
 import { apiError } from '@/lib/server/api-response';
 import { createLogger } from '@/lib/logger';
 
@@ -32,14 +32,10 @@ export async function POST(request: NextRequest) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Missing or invalid url');
     }
 
-    // Block local/private network URLs to prevent SSRF
-    const ssrfError = await validateUrlForSSRF(url);
-    if (ssrfError) {
-      return apiError('INVALID_URL', 403, ssrfError);
-    }
-
-    // Disable redirect following to prevent redirect-to-internal attacks
-    const response = await fetch(url, { redirect: 'manual' });
+    // ssrfSafeFetch validates the URL and pins the connection to a validated IP,
+    // eliminating the TOCTOU window between DNS validation and connect.
+    // redirect: 'manual' prevents redirect-to-internal attacks.
+    const response = await ssrfSafeFetch(url, { redirect: 'manual' });
     if (response.status >= 300 && response.status < 400) {
       return apiError('REDIRECT_NOT_ALLOWED', 403, 'Redirects are not allowed');
     }
@@ -47,13 +43,14 @@ export async function POST(request: NextRequest) {
       return apiError('UPSTREAM_ERROR', 502, `Upstream returned ${response.status}`);
     }
 
-    const blob = await response.blob();
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
     const contentType = response.headers.get('content-type') || 'application/octet-stream';
 
-    return new NextResponse(blob, {
+    return new NextResponse(buffer, {
       headers: {
         'Content-Type': contentType,
-        'Content-Length': String(blob.size),
+        'Content-Length': String(buffer.length),
         'Cache-Control': 'private, max-age=3600',
       },
     });

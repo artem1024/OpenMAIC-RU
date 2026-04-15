@@ -23,6 +23,7 @@ import type { VideoProviderId, VideoGenerationOptions } from '@/lib/media/types'
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
+import { isManagedProviderMode, logManagedModeBypass } from '@/lib/server/managed-mode';
 
 const log = createLogger('VideoGeneration API');
 
@@ -37,9 +38,21 @@ export async function POST(request: NextRequest) {
     }
 
     const providerId = (request.headers.get('x-video-provider') || 'seedance') as VideoProviderId;
-    const clientApiKey = request.headers.get('x-api-key') || undefined;
-    const clientBaseUrl = request.headers.get('x-base-url') || undefined;
+    const managed = isManagedProviderMode();
+    let clientApiKey = request.headers.get('x-api-key') || undefined;
+    let clientBaseUrl = request.headers.get('x-base-url') || undefined;
     const clientModel = request.headers.get('x-video-model') || undefined;
+
+    // In managed mode, ignore client-supplied provider credentials.
+    if (managed && (clientApiKey || clientBaseUrl)) {
+      logManagedModeBypass({
+        route: '/api/generate/video',
+        header: clientBaseUrl ? 'x-base-url' : 'x-api-key',
+        value: clientBaseUrl || clientApiKey,
+      });
+      clientApiKey = undefined;
+      clientBaseUrl = undefined;
+    }
 
     if (clientBaseUrl && process.env.NODE_ENV === 'production') {
       const ssrfError = await validateUrlForSSRF(clientBaseUrl);

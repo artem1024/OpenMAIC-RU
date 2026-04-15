@@ -12,6 +12,7 @@ import type { Action, SpeechAction } from '@/lib/types/action';
 import type { TTSProviderId } from '@/lib/audio/types';
 import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
 import { generateMediaForOutlines } from '@/lib/media/media-orchestrator';
+import { isManagedModeClient } from '@/lib/hooks/use-public-config';
 import { createLogger } from '@/lib/logger';
 
 const log = createLogger('SceneGenerator');
@@ -33,31 +34,39 @@ interface SceneActionsResult {
 function getApiHeaders(): HeadersInit {
   const config = getCurrentModelConfig();
   const settings = useSettingsStore.getState();
+  const managed = isManagedModeClient();
   const imageProviderConfig = settings.imageProvidersConfig?.[settings.imageProviderId];
   const videoProviderConfig = settings.videoProvidersConfig?.[settings.videoProviderId];
 
-  return {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'x-model': config.modelString || '',
-    'x-api-key': config.apiKey || '',
-    'x-base-url': config.baseUrl || '',
     'x-provider-type': config.providerType || '',
     'x-requires-api-key': String(config.requiresApiKey ?? false),
     // Image generation provider
     'x-image-provider': settings.imageProviderId || '',
     'x-image-model': settings.imageModelId || '',
-    'x-image-api-key': imageProviderConfig?.apiKey || '',
-    'x-image-base-url': imageProviderConfig?.baseUrl || '',
     // Video generation provider
     'x-video-provider': settings.videoProviderId || '',
     'x-video-model': settings.videoModelId || '',
-    'x-video-api-key': videoProviderConfig?.apiKey || '',
-    'x-video-base-url': videoProviderConfig?.baseUrl || '',
     // Media generation toggles
     'x-image-generation-enabled': String(settings.imageGenerationEnabled ?? false),
     'x-video-generation-enabled': String(settings.videoGenerationEnabled ?? false),
   };
+
+  // In managed mode, omit all provider credentials from the request.
+  if (!managed) {
+    headers['x-api-key'] = config.apiKey || '';
+    if (config.baseUrl) headers['x-base-url'] = config.baseUrl;
+    headers['x-image-api-key'] = imageProviderConfig?.apiKey || '';
+    if (imageProviderConfig?.baseUrl) headers['x-image-base-url'] = imageProviderConfig.baseUrl;
+    headers['x-video-api-key'] = videoProviderConfig?.apiKey || '';
+    if (videoProviderConfig?.baseUrl) headers['x-video-base-url'] = videoProviderConfig.baseUrl;
+  }
+
+  return headers;
 }
+
 
 /** Call POST /api/generate/scene-content (step 1) */
 async function fetchSceneContent(

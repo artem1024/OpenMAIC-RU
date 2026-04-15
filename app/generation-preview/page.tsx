@@ -25,6 +25,7 @@ import { nanoid } from 'nanoid';
 import type { Stage } from '@/lib/types/stage';
 import type { SceneOutline, PdfImage, ImageMapping } from '@/lib/types/generation';
 import { AgentRevealModal } from '@/components/agent/agent-reveal-modal';
+import { isManagedModeClient } from '@/lib/hooks/use-public-config';
 import { createLogger } from '@/lib/logger';
 import { type GenerationSessionState, ALL_STEPS, getActiveSteps } from './types';
 import { StepVisualizer } from './components/visualizers';
@@ -92,29 +93,37 @@ function GenerationPreviewContent() {
   const getApiHeaders = () => {
     const modelConfig = getCurrentModelConfig();
     const settings = useSettingsStore.getState();
+    const managed = isManagedModeClient();
     const imageProviderConfig = settings.imageProvidersConfig?.[settings.imageProviderId];
     const videoProviderConfig = settings.videoProvidersConfig?.[settings.videoProviderId];
-    return {
+
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'x-model': modelConfig.modelString,
-      'x-api-key': modelConfig.apiKey,
-      'x-base-url': modelConfig.baseUrl,
       'x-provider-type': modelConfig.providerType || '',
       'x-requires-api-key': modelConfig.requiresApiKey ? 'true' : 'false',
       // Image generation provider
       'x-image-provider': settings.imageProviderId || '',
       'x-image-model': settings.imageModelId || '',
-      'x-image-api-key': imageProviderConfig?.apiKey || '',
-      'x-image-base-url': imageProviderConfig?.baseUrl || '',
       // Video generation provider
       'x-video-provider': settings.videoProviderId || '',
       'x-video-model': settings.videoModelId || '',
-      'x-video-api-key': videoProviderConfig?.apiKey || '',
-      'x-video-base-url': videoProviderConfig?.baseUrl || '',
       // Media generation toggles
       'x-image-generation-enabled': String(settings.imageGenerationEnabled ?? false),
       'x-video-generation-enabled': String(settings.videoGenerationEnabled ?? false),
     };
+
+    // In managed mode, omit all provider credentials.
+    if (!managed) {
+      headers['x-api-key'] = modelConfig.apiKey;
+      if (modelConfig.baseUrl) headers['x-base-url'] = modelConfig.baseUrl;
+      headers['x-image-api-key'] = imageProviderConfig?.apiKey || '';
+      if (imageProviderConfig?.baseUrl) headers['x-image-base-url'] = imageProviderConfig.baseUrl;
+      headers['x-video-api-key'] = videoProviderConfig?.apiKey || '';
+      if (videoProviderConfig?.baseUrl) headers['x-video-base-url'] = videoProviderConfig.baseUrl;
+    }
+
+    return headers;
   };
 
   // Auto-start generation when session is loaded
