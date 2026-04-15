@@ -28,10 +28,22 @@ export async function writeJsonFileAtomic(filePath: string, data: unknown) {
   await fs.rename(tempFilePath, filePath);
 }
 
+/**
+ * Build the origin used to construct `pollUrl` / `classroomUrl` etc.
+ *
+ * See remediation-plan-v3 P1.9:
+ *   - ALWAYS prefer `process.env.PUBLIC_BASE_URL` when set.
+ *   - Never trust `x-forwarded-host` / `x-forwarded-proto` — they are attacker-controlled
+ *     and cause host-header poisoning of persisted URLs.
+ *   - Fall back to `req.nextUrl.origin` only in dev when PUBLIC_BASE_URL is unset.
+ */
+// DEPRECATED: old implementation trusted x-forwarded-host, see remediation-plan-v3 P1.9.
 export function buildRequestOrigin(req: NextRequest): string {
-  return req.headers.get('x-forwarded-host')
-    ? `${req.headers.get('x-forwarded-proto') || 'http'}://${req.headers.get('x-forwarded-host')}`
-    : req.nextUrl.origin;
+  const configured = process.env.PUBLIC_BASE_URL?.trim();
+  if (configured) {
+    return configured.replace(/\/+$/, '');
+  }
+  return req.nextUrl.origin;
 }
 
 export interface PersistedClassroomData {

@@ -16,6 +16,10 @@ import type {
   ImageGenerationOptions,
   ImageGenerationResult,
 } from '../types';
+import {
+  isResponseFromExpectedProvider,
+  providerMismatchMessage,
+} from './_connectivity-helpers';
 
 const DEFAULT_MODEL = 'qwen-image-max';
 const DEFAULT_BASE_URL = 'https://dashscope.aliyuncs.com';
@@ -54,12 +58,21 @@ export async function testQwenImageConnectivity(
         }),
       },
     );
+    // DEPRECATED: prior check returned success on any non-401/403; see remediation-plan-v3 P0.4.
     if (response.status === 401 || response.status === 403) {
       const text = await response.text();
       return {
         success: false,
         message: `Qwen Image auth failed (${response.status}): ${text}`,
       };
+    }
+    const check = await isResponseFromExpectedProvider(response, {
+      okKeys: ['output', 'usage', 'request_id', 'code'],
+      errorKeys: ['code', 'message', 'request_id'],
+      markers: ['dashscope', 'alibaba', 'qwen', 'aliyuncs'],
+    });
+    if (!check.confirmed) {
+      return { success: false, message: providerMismatchMessage('Qwen Image', check.status) };
     }
     return { success: true, message: 'Connected to Qwen Image' };
   } catch (err) {

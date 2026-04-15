@@ -29,6 +29,10 @@ import type {
   VideoGenerationOptions,
   VideoGenerationResult,
 } from '../types';
+import {
+  isResponseFromExpectedProvider,
+  providerMismatchMessage,
+} from './_connectivity-helpers';
 
 const DEFAULT_MODEL = 'doubao-seedance-1-5-pro-251215';
 const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com';
@@ -118,12 +122,21 @@ export async function testSeedanceConnectivity(
       },
     );
     // 401/403 means key invalid; anything else (404, 400, 200) means key works
+    // DEPRECATED: prior check returned success on any non-401/403; see remediation-plan-v3 P0.4.
     if (response.status === 401 || response.status === 403) {
       const text = await response.text();
       return {
         success: false,
         message: `Seedance auth failed (${response.status}): ${text}`,
       };
+    }
+    const check = await isResponseFromExpectedProvider(response, {
+      okKeys: ['id', 'task_id', 'status'],
+      errorKeys: ['error', 'code'],
+      markers: ['volcengine', 'ark', 'seedance', 'doubao', 'bytedance'],
+    });
+    if (!check.confirmed) {
+      return { success: false, message: providerMismatchMessage('Seedance', check.status) };
     }
     return { success: true, message: 'Connected to Seedance' };
   } catch (err) {

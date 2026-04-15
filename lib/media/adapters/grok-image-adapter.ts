@@ -18,6 +18,10 @@ import type {
   ImageGenerationOptions,
   ImageGenerationResult,
 } from '../types';
+import {
+  isResponseFromExpectedProvider,
+  providerMismatchMessage,
+} from './_connectivity-helpers';
 
 const DEFAULT_MODEL = 'grok-imagine-image';
 const DEFAULT_BASE_URL = 'https://api.x.ai/v1';
@@ -43,12 +47,21 @@ export async function testGrokImageConnectivity(
         n: 1,
       }),
     });
+    // DEPRECATED: prior check returned success on any non-401/403; see remediation-plan-v3 P0.4.
     if (response.status === 401 || response.status === 403) {
       const text = await response.text();
       return {
         success: false,
         message: `Grok Image auth failed (${response.status}): ${text}`,
       };
+    }
+    const check = await isResponseFromExpectedProvider(response, {
+      okKeys: ['data', 'created', 'model'],
+      errorKeys: ['error', 'code'],
+      markers: ['xai', 'x.ai', 'grok'],
+    });
+    if (!check.confirmed) {
+      return { success: false, message: providerMismatchMessage('Grok Image', check.status) };
     }
     return { success: true, message: 'Connected to Grok Image' };
   } catch (err) {

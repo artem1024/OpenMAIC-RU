@@ -27,6 +27,10 @@ import type {
   VideoGenerationOptions,
   VideoGenerationResult,
 } from '../types';
+import {
+  isResponseFromExpectedProvider,
+  providerMismatchMessage,
+} from './_connectivity-helpers';
 
 const DEFAULT_MODEL = 'veo-3.0-generate-001';
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
@@ -179,7 +183,15 @@ export async function testVeoConnectivity(
     }
   }
 
+  // DEPRECATED: prior check accepted any ok response as "connected"; see remediation-plan-v3 P0.4.
   if (response.ok) {
+    const check = await isResponseFromExpectedProvider(response, {
+      okKeys: ['models', 'nextPageToken', 'name'],
+      markers: ['googleapis', 'generativelanguage', 'google'],
+    });
+    if (!check.confirmed) {
+      return { success: false, message: providerMismatchMessage(`Veo (${model})`, check.status) };
+    }
     return { success: true, message: `Connected to Veo (${model})` };
   }
 

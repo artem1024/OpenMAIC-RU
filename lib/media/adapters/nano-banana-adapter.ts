@@ -19,6 +19,10 @@ import type {
   ImageGenerationOptions,
   ImageGenerationResult,
 } from '../types';
+import {
+  isResponseFromExpectedProvider,
+  providerMismatchMessage,
+} from './_connectivity-helpers';
 
 const DEFAULT_MODEL = 'gemini-2.5-flash-image';
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
@@ -76,7 +80,18 @@ export async function testNanoBananaConnectivity(
     }
   }
 
+  // DEPRECATED: prior check accepted any ok response as "connected"; see remediation-plan-v3 P0.4.
   if (response.ok) {
+    const check = await isResponseFromExpectedProvider(response, {
+      okKeys: ['models', 'nextPageToken', 'name'],
+      markers: ['googleapis', 'generativelanguage', 'google'],
+    });
+    if (!check.confirmed) {
+      return {
+        success: false,
+        message: providerMismatchMessage(`Nano Banana (${model})`, check.status),
+      };
+    }
     return { success: true, message: `Connected to Nano Banana (${model})` };
   }
 

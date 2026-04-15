@@ -25,6 +25,10 @@ import type {
   VideoGenerationOptions,
   VideoGenerationResult,
 } from '../types';
+import {
+  isResponseFromExpectedProvider,
+  providerMismatchMessage,
+} from './_connectivity-helpers';
 
 const DEFAULT_MODEL = 'kling-v2-6';
 const DEFAULT_BASE_URL = 'https://api-beijing.klingai.com';
@@ -155,12 +159,21 @@ export async function testKlingConnectivity(
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
     });
+    // DEPRECATED: prior check returned success on any non-401/403; see remediation-plan-v3 P0.4.
     if (response.status === 401 || response.status === 403) {
       const text = await response.text();
       return {
         success: false,
         message: `Kling auth failed (${response.status}): ${text}`,
       };
+    }
+    const check = await isResponseFromExpectedProvider(response, {
+      okKeys: ['code', 'message', 'request_id', 'data'],
+      errorKeys: ['code', 'request_id'],
+      markers: ['kling', 'klingai', 'kuaishou'],
+    });
+    if (!check.confirmed) {
+      return { success: false, message: providerMismatchMessage('Kling', check.status) };
     }
     return { success: true, message: 'Connected to Kling' };
   } catch (err) {

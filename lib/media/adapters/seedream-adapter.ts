@@ -18,6 +18,10 @@ import type {
   ImageGenerationOptions,
   ImageGenerationResult,
 } from '../types';
+import {
+  isResponseFromExpectedProvider,
+  providerMismatchMessage,
+} from './_connectivity-helpers';
 
 const DEFAULT_MODEL = 'doubao-seedream-5-0-260128';
 const DEFAULT_BASE_URL = 'https://ark.cn-beijing.volces.com';
@@ -65,12 +69,21 @@ export async function testSeedreamConnectivity(
         size: '1x1',
       }),
     });
+    // DEPRECATED: prior check returned success on any non-401/403; see remediation-plan-v3 P0.4.
     if (response.status === 401 || response.status === 403) {
       const text = await response.text();
       return {
         success: false,
         message: `Seedream auth failed (${response.status}): ${text}`,
       };
+    }
+    const check = await isResponseFromExpectedProvider(response, {
+      okKeys: ['data', 'usage'],
+      errorKeys: ['error', 'code'],
+      markers: ['volcengine', 'ark', 'seedream', 'doubao', 'bytedance'],
+    });
+    if (!check.confirmed) {
+      return { success: false, message: providerMismatchMessage('Seedream', check.status) };
     }
     return { success: true, message: 'Connected to Seedream' };
   } catch (err) {
