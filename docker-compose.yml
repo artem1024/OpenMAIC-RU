@@ -9,6 +9,7 @@ services:
     restart: unless-stopped
     networks:
       - openmaic-net
+      - ai-gateway-net
 
 volumes:
   openmaic-data:
@@ -16,3 +17,6 @@ volumes:
 networks:
   openmaic-net:
     external: true
+  ai-gateway-net:
+    external: true
+    name: ai-gateway_default
