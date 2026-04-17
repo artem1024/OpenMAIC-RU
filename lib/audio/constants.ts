@@ -658,6 +658,48 @@ export const TTS_PROVIDERS: Record<TTSProviderId, TTSProviderConfig> = {
     speedRange: { min: 0.5, max: 2.0, default: 1.0 },
   },
 
+  'gemini-tts': {
+    id: 'gemini-tts',
+    name: 'Gemini 2.5 TTS (via ai-gateway)',
+    requiresApiKey: true,
+    // Обращаемся к media-gateway через общую Docker-сеть ai-gateway_default.
+    // apiKey здесь — MEDIA_GATEWAY_API_KEY (см. server-providers.yml / env).
+    defaultBaseUrl: 'http://media-gateway:8000',
+    icon: '/logos/google.svg',
+    voices: [
+      {
+        id: 'Kore',
+        name: 'Kore',
+        language: 'ru-RU',
+        localeName: 'Русский (Россия)',
+        gender: 'female',
+        description: 'Чёткая, нейтральная — рекомендуется для обучающих классрумов',
+      },
+      {
+        id: 'Puck',
+        name: 'Puck',
+        language: 'ru-RU',
+        localeName: 'Русский (Россия)',
+        gender: 'male',
+      },
+      {
+        id: 'Charon',
+        name: 'Charon',
+        language: 'ru-RU',
+        localeName: 'Русский (Россия)',
+        gender: 'male',
+      },
+      {
+        id: 'Aoede',
+        name: 'Aoede',
+        language: 'ru-RU',
+        localeName: 'Русский (Россия)',
+        gender: 'female',
+      },
+    ],
+    supportedFormats: ['mp3'],
+  },
+
   'elevenlabs-tts': {
     id: 'elevenlabs-tts',
     name: 'ElevenLabs TTS',
@@ -949,6 +991,7 @@ export const DEFAULT_TTS_VOICES: Record<TTSProviderId, string> = {
   'qwen-tts': 'Cherry',
   'edge-tts': 'ru-RU-SvetlanaNeural',
   'elevenlabs-tts': 'EXAVITQu4vr4xnSDxMaL',
+  'gemini-tts': 'Kore',
   'browser-native-tts': 'default',
 };
 

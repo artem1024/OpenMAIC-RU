@@ -143,6 +143,9 @@ export async function generateTTS(
     case 'elevenlabs-tts':
       return await generateElevenLabsTTS(config, text);
 
+    case 'gemini-tts':
+      return await generateGeminiTTS(config, text);
+
     case 'browser-native-tts':
       throw new Error(
         'Browser Native TTS must be handled client-side using Web Speech API. This provider cannot be used on the server.',
@@ -872,6 +875,69 @@ async function generateElevenLabsTTS(
     format: requestedFormat,
   };
 }
+
+/**
+ * Gemini 2.5 TTS via ai-gateway media-gateway.
+ *
+ * Media-gateway (Python FastAPI) делает native Vertex AI generateContent
+ * с response_modalities=["AUDIO"], транскодирует PCM→mp3 через ffmpeg
+ * и (опционально) откатывается на edge-tts. Мы вызываем его из Docker-сети
+ * ai-gateway_default по DNS-имени media-gateway:8000. См.
+ * ai-gateway/media-gateway/app/services/tts_service.py.
+ *
+ * Ключевая настройка — allow_fallback: вызывающий код (classroom pinning)
+ * пропускает false после того, как первый action на classroom'е прошёл через
+ * Gemini, чтобы гарантировать один голос на весь урок.
+ */
+export interface GeminiTTSOptions {
+  allowFallback?: boolean;
+  classroomId?: string;
+  actionId?: string;
+}
+
+async function generateGeminiTTS(
+  config: TTSModelConfig,
+  text: string,
+  options: GeminiTTSOptions = {},
+): Promise<TTSGenerationResult> {
+  const baseUrl = config.baseUrl || TTS_PROVIDERS['gemini-tts'].defaultBaseUrl;
+  if (!baseUrl) {
+    throw new Error('gemini-tts: baseUrl is not configured');
+  }
+  if (!config.apiKey) {
+    throw new Error('gemini-tts: MEDIA_GATEWAY_API_KEY is not configured');
+  }
+
+  const response = await fetch(`${baseUrl}/tts`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'X-API-Key': config.apiKey,
+    },
+    body: JSON.stringify({
+      text,
+      voice: config.voice,
+      allow_fallback: options.allowFallback ?? true,
+      classroom_id: options.classroomId ?? null,
+      action_id: options.actionId ?? null,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => response.statusText);
+    throw new Error(
+      `gemini-tts (via media-gateway) error ${response.status}: ${errorText || response.statusText}`,
+    );
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  return {
+    audio: new Uint8Array(arrayBuffer),
+    format: 'mp3',
+  };
+}
+
+export { generateGeminiTTS };
 
 /**
  * Get current TTS configuration from settings store

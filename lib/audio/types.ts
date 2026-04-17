@@ -84,6 +84,7 @@ export type TTSProviderId =
   | 'qwen-tts'
   | 'edge-tts'
   | 'elevenlabs-tts'
+  | 'gemini-tts'
   | 'browser-native-tts';
 // Add new TTS providers below (uncomment and modify):
 // | 'fish-audio-tts'

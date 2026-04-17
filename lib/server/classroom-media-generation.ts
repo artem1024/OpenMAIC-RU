@@ -11,7 +11,7 @@ import { createLogger } from '@/lib/logger';
 import { CLASSROOMS_DIR } from '@/lib/server/classroom-storage';
 import { generateImage } from '@/lib/media/image-providers';
 import { generateVideo, normalizeVideoOptions } from '@/lib/media/video-providers';
-import { generateTTS } from '@/lib/audio/tts-providers';
+import { generateTTS, generateGeminiTTS } from '@/lib/audio/tts-providers';
 import { DEFAULT_TTS_VOICES, TTS_PROVIDERS } from '@/lib/audio/constants';
 import { IMAGE_PROVIDERS } from '@/lib/media/image-providers';
 import { VIDEO_PROVIDERS } from '@/lib/media/video-providers';
@@ -211,52 +211,92 @@ export async function generateTTSForClassroom(
   const audioDir = path.join(CLASSROOMS_DIR, classroomId, 'audio');
   await ensureDir(audioDir);
 
-  // Resolve TTS provider (exclude browser-native-tts)
+  // Resolve server-side TTS providers (excluding browser-native).
+  // Порядок в server-providers.yml задаёт primary/secondary: первый — основной,
+  // второй (если есть) — аварийный. Закрепляем один голос на весь classroom
+  // (pinning), чтобы ученик не слышал смену voice mid-lesson.
   const ttsProviderIds = Object.keys(getServerTTSProviders()).filter(
     (id) => id !== 'browser-native-tts',
-  );
+  ) as TTSProviderId[];
   if (ttsProviderIds.length === 0) {
     log.warn('No server TTS provider configured, skipping TTS generation');
     return;
   }
 
-  const providerId = ttsProviderIds[0] as TTSProviderId;
-  const apiKey = resolveTTSApiKey(providerId);
-  if (!apiKey) {
-    log.warn(`No API key for TTS provider "${providerId}", skipping TTS generation`);
-    return;
-  }
-  const ttsBaseUrl = resolveTTSBaseUrl(providerId) || TTS_PROVIDERS[providerId]?.defaultBaseUrl;
-  const voice = DEFAULT_TTS_VOICES[providerId] || 'default';
-  const format = TTS_PROVIDERS[providerId]?.supportedFormats?.[0] || 'mp3';
+  const primaryId = ttsProviderIds[0];
+  const secondaryId = ttsProviderIds[1];
 
-  for (const scene of scenes) {
-    if (!scene.actions) continue;
+  const runPass = async (providerId: TTSProviderId, isPrimary: boolean): Promise<void> => {
+    const apiKey = resolveTTSApiKey(providerId);
+    if (!apiKey && TTS_PROVIDERS[providerId]?.requiresApiKey) {
+      throw new Error(`No API key for TTS provider "${providerId}"`);
+    }
+    const ttsBaseUrl = resolveTTSBaseUrl(providerId) || TTS_PROVIDERS[providerId]?.defaultBaseUrl;
+    const voice = DEFAULT_TTS_VOICES[providerId] || 'default';
+    const format = TTS_PROVIDERS[providerId]?.supportedFormats?.[0] || 'mp3';
 
-    // Split long speech actions into multiple shorter ones before TTS generation,
-    // mirroring the client-side approach. Each sub-action gets its own audio file.
-    scene.actions = splitLongSpeechActions(scene.actions, providerId);
+    for (const scene of scenes) {
+      if (!scene.actions) continue;
+      scene.actions = splitLongSpeechActions(scene.actions, providerId);
 
-    for (const action of scene.actions) {
-      if (action.type !== 'speech' || !(action as SpeechAction).text) continue;
-      const speechAction = action as SpeechAction;
-      const audioId = `tts_${action.id}`;
+      for (const action of scene.actions) {
+        if (action.type !== 'speech' || !(action as SpeechAction).text) continue;
+        const speechAction = action as SpeechAction;
+        const audioId = `tts_${action.id}`;
 
-      try {
-        const result = await generateTTS(
-          { providerId, apiKey, baseUrl: ttsBaseUrl, voice, speed: speechAction.speed, speakerName: teacherName },
-          speechAction.text,
-        );
+        let result;
+        if (providerId === 'gemini-tts') {
+          // Прямой вызов: пробрасываем classroom/action ids для наблюдаемости
+          // и allow_fallback=false — хотим видеть ошибку здесь, чтобы каскадно
+          // откатить весь classroom на secondary, а не получить edge-tts
+          // внутри Gemini-классрума (микс голосов).
+          result = await generateGeminiTTS(
+            {
+              providerId,
+              apiKey,
+              baseUrl: ttsBaseUrl,
+              voice,
+              speed: speechAction.speed,
+              speakerName: teacherName,
+            },
+            speechAction.text,
+            {
+              allowFallback: !isPrimary, // на secondary-проходе разрешаем внутренний fallback
+              classroomId,
+              actionId: action.id,
+            },
+          );
+        } else {
+          result = await generateTTS(
+            { providerId, apiKey, baseUrl: ttsBaseUrl, voice, speed: speechAction.speed, speakerName: teacherName },
+            speechAction.text,
+          );
+        }
 
         const filename = `${audioId}.${format}`;
         await fs.writeFile(path.join(audioDir, filename), result.audio);
-
         speechAction.audioId = audioId;
         speechAction.audioUrl = mediaServingUrl(baseUrl, classroomId, `audio/${filename}`);
-        log.info(`Generated TTS: ${filename} (${result.audio.length} bytes)`);
-      } catch (err) {
-        log.warn(`TTS generation failed for action ${action.id}:`, err);
+        log.info(`Generated TTS [${providerId}]: ${filename} (${result.audio.length} bytes)`);
       }
+    }
+  };
+
+  try {
+    await runPass(primaryId, true);
+  } catch (err) {
+    if (!secondaryId) {
+      log.warn(`Classroom ${classroomId}: primary TTS "${primaryId}" failed and no secondary configured:`, err);
+      return;
+    }
+    log.warn(
+      `Classroom ${classroomId}: primary TTS "${primaryId}" failed, cascading entire classroom to "${secondaryId}". Reason:`,
+      err,
+    );
+    try {
+      await runPass(secondaryId, false);
+    } catch (err2) {
+      log.warn(`Classroom ${classroomId}: secondary TTS "${secondaryId}" also failed:`, err2);
     }
   }
 }
