@@ -118,6 +118,10 @@ export const settingsZhCN = {
     importFromClipboard: '从剪贴板导入',
     apiSecret: 'API 密钥',
     apiHost: 'Base URL',
+    baseUrlRegion: {
+      china: '中国',
+      international: '国际',
+    },
     requestUrl: '请求地址',
     models: '模型',
     addModel: '新建',
@@ -719,6 +723,10 @@ export const settingsRuRU = {
     importFromClipboard: 'Импорт из буфера обмена',
     apiSecret: 'API-ключ',
     apiHost: 'Base URL',
+    baseUrlRegion: {
+      china: 'Китай',
+      international: 'Международный',
+    },
     requestUrl: 'Адрес запроса',
     models: 'Модели',
     addModel: 'Создать',
@@ -1323,6 +1331,10 @@ export const settingsEnUS = {
     importFromClipboard: 'Import from Clipboard',
     apiSecret: 'API Key',
     apiHost: 'Base URL',
+    baseUrlRegion: {
+      china: 'China',
+      international: 'International',
+    },
     requestUrl: 'Request URL',
     models: 'Models',
     addModel: 'New',

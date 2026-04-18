@@ -120,6 +120,10 @@ export interface TTSProviderConfig {
     max: number;
     default: number;
   };
+  /** Whether this provider supports per-call model selection */
+  supportsModelSelection?: boolean;
+  /** Available models for selection (when supportsModelSelection=true) */
+  models?: Array<{ id: string; name: string }>;
 }
 
 /**
