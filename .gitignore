@@ -66,3 +66,7 @@ next-env.d.ts
 # docs
 /docs
 .env.local
+
+# Eval results
+eval/whiteboard-layout/results/
+eval/outline-language/results/
