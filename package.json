@@ -16,7 +16,8 @@
     "format": "prettier . --write",
     "test": "vitest run",
     "schema:classroom": "typescript-json-schema tsconfig.json PersistedClassroomData --required --strictNullChecks --skipLibCheck --esModuleInterop --ignoreErrors --include 'lib/**/*.ts' --topRef --aliasRefs --out lib/generated/classroom.schema.json",
-    "eval:whiteboard": "tsx eval/whiteboard-layout/runner.ts"
+    "eval:whiteboard": "tsx eval/whiteboard-layout/runner.ts",
+    "eval:outline-language": "tsx eval/outline-language/runner.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.23",
