@@ -845,12 +845,13 @@ export function Stage({
         )}
       </div>
 
-      {/* Chat Area — collapsed by default in embedded mode */}
+      {/* Chat Area — collapsed by default in embedded mode (default chatAreaCollapsed=true),
+          but user can still open it via the toolbar toggle. */}
       <ChatArea
         ref={chatAreaRef}
         width={chatAreaWidth}
         onWidthChange={setChatAreaWidth}
-        collapsed={isEmbedded || chatAreaCollapsed}
+        collapsed={chatAreaCollapsed}
         onCollapseChange={setChatAreaCollapsed}
         activeBubbleId={activeBubbleId}
         onActiveBubble={(id) => setActiveBubbleId(id)}
