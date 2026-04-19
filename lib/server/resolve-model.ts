@@ -10,6 +10,9 @@ import { getModel, parseModelString, type ModelWithInfo } from '@/lib/ai/provide
 import { resolveApiKey, resolveBaseUrl, resolveProxy } from '@/lib/server/provider-config';
 import { validateUrlForSSRFSync } from '@/lib/server/ssrf-guard';
 import { isManagedProviderMode, logManagedModeBypass } from '@/lib/server/managed-mode';
+import { createLogger } from '@/lib/logger';
+
+const log = createLogger('ResolveModel');
 
 export interface ResolvedModel extends ModelWithInfo {
   /** Original model string (e.g. "openai/gpt-4o-mini") */
@@ -30,12 +33,29 @@ export function resolveModel(params: {
   providerType?: string;
   requiresApiKey?: boolean;
 }): ResolvedModel {
-  const modelString = params.modelString || process.env.DEFAULT_MODEL || 'gpt-4o-mini';
+  const managed = isManagedProviderMode();
+  const serverDefault = process.env.DEFAULT_MODEL || '';
+
+  // In managed mode, ignore client-supplied model — the server's DEFAULT_MODEL
+  // is authoritative. This prevents a stale client-state (e.g. "gpt-5.2")
+  // from reaching the proxy with a model name the ai-gateway does not expose.
+  let modelString: string;
+  if (managed && serverDefault) {
+    if (params.modelString && params.modelString !== serverDefault) {
+      log.warn('Client model overridden in managed mode', {
+        clientModel: params.modelString,
+        serverDefault,
+      });
+    }
+    modelString = serverDefault;
+  } else {
+    modelString = params.modelString || serverDefault || 'gpt-4o-mini';
+  }
+
   const { providerId, modelId } = parseModelString(modelString);
 
   // In managed mode, ignore any client-supplied credentials.
   // Server-configured providers are authoritative.
-  const managed = isManagedProviderMode();
   let clientBaseUrl = params.baseUrl || undefined;
   let clientApiKey = params.apiKey || undefined;
 

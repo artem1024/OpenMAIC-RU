@@ -18,7 +18,11 @@
 
 import { NextRequest } from 'next/server';
 import { generateVideo, normalizeVideoOptions } from '@/lib/media/video-providers';
-import { resolveVideoApiKey, resolveVideoBaseUrl } from '@/lib/server/provider-config';
+import {
+  resolveVideoApiKey,
+  resolveVideoBaseUrl,
+  getServerVideoProviders,
+} from '@/lib/server/provider-config';
 import type { VideoProviderId, VideoGenerationOptions } from '@/lib/media/types';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
@@ -40,21 +44,29 @@ export async function POST(request: NextRequest) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Missing prompt');
     }
 
-    const providerId = (request.headers.get('x-video-provider') || 'seedance') as VideoProviderId;
+    let providerId = (request.headers.get('x-video-provider') || 'seedance') as VideoProviderId;
     const managed = isManagedProviderMode();
     let clientApiKey = request.headers.get('x-api-key') || undefined;
     let clientBaseUrl = request.headers.get('x-base-url') || undefined;
     const clientModel = request.headers.get('x-video-model') || undefined;
 
-    // In managed mode, ignore client-supplied provider credentials.
-    if (managed && (clientApiKey || clientBaseUrl)) {
-      logManagedModeBypass({
-        route: '/api/generate/video',
-        header: clientBaseUrl ? 'x-base-url' : 'x-api-key',
-        value: clientBaseUrl || clientApiKey,
-      });
-      clientApiKey = undefined;
-      clientBaseUrl = undefined;
+    if (managed) {
+      if (clientApiKey || clientBaseUrl) {
+        logManagedModeBypass({
+          route: '/api/generate/video',
+          header: clientBaseUrl ? 'x-base-url' : 'x-api-key',
+          value: clientBaseUrl || clientApiKey,
+        });
+        clientApiKey = undefined;
+        clientBaseUrl = undefined;
+      }
+      const serverIds = Object.keys(getServerVideoProviders()) as VideoProviderId[];
+      if (serverIds.length > 0 && !serverIds.includes(providerId)) {
+        log.info(
+          `Managed mode: overriding client video provider "${providerId}" → "${serverIds[0]}"`,
+        );
+        providerId = serverIds[0];
+      }
     }
 
     if (clientBaseUrl && process.env.NODE_ENV === 'production') {

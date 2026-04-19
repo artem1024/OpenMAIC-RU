@@ -151,4 +151,34 @@ describe('resolve-model managed mode', () => {
 
     expect(result.apiKey).toBe('client-header-key');
   });
+
+  test('managed: client modelString is overridden by DEFAULT_MODEL', async () => {
+    process.env.MANAGED_PROVIDER_MODE = '1';
+    process.env.DEFAULT_MODEL = 'openai:llm';
+    const { resolveModel } = await loadResolveModel();
+
+    const result = resolveModel({ modelString: 'openai:gpt-5.2' });
+
+    expect(result.modelString).toBe('openai:llm');
+  });
+
+  test('non-managed: client modelString wins even if DEFAULT_MODEL is set', async () => {
+    delete process.env.MANAGED_PROVIDER_MODE;
+    process.env.DEFAULT_MODEL = 'openai:llm';
+    const { resolveModel } = await loadResolveModel();
+
+    const result = resolveModel({ modelString: 'openai:gpt-5.2' });
+
+    expect(result.modelString).toBe('openai:gpt-5.2');
+  });
+
+  test('managed without DEFAULT_MODEL: falls back to client model (no server default to enforce)', async () => {
+    process.env.MANAGED_PROVIDER_MODE = '1';
+    delete process.env.DEFAULT_MODEL;
+    const { resolveModel } = await loadResolveModel();
+
+    const result = resolveModel({ modelString: 'openai:gpt-5.2' });
+
+    expect(result.modelString).toBe('openai:gpt-5.2');
+  });
 });

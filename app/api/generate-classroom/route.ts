@@ -5,23 +5,35 @@ import { type GenerateClassroomInput } from '@/lib/server/classroom-generation';
 import { runClassroomGenerationJob } from '@/lib/server/classroom-job-runner';
 import { createClassroomGenerationJob } from '@/lib/server/classroom-job-store';
 import { buildRequestOrigin } from '@/lib/server/classroom-storage';
+import { isManagedProviderMode } from '@/lib/server/managed-mode';
+import {
+  getServerImageProviders,
+  getServerVideoProviders,
+} from '@/lib/server/provider-config';
 
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
   try {
     const rawBody = (await req.json()) as Partial<GenerateClassroomInput>;
+    const managed = isManagedProviderMode();
+    const hasServerImage = managed && Object.keys(getServerImageProviders()).length > 0;
+    const hasServerVideo = managed && Object.keys(getServerVideoProviders()).length > 0;
     const body: GenerateClassroomInput = {
       requirement: rawBody.requirement || '',
       ...(rawBody.pdfContent ? { pdfContent: rawBody.pdfContent } : {}),
       ...(rawBody.language ? { language: rawBody.language } : {}),
       ...(rawBody.enableWebSearch != null ? { enableWebSearch: rawBody.enableWebSearch } : {}),
-      ...(rawBody.enableImageGeneration != null
-        ? { enableImageGeneration: rawBody.enableImageGeneration }
-        : {}),
-      ...(rawBody.enableVideoGeneration != null
-        ? { enableVideoGeneration: rawBody.enableVideoGeneration }
-        : {}),
+      ...(hasServerImage
+        ? { enableImageGeneration: true }
+        : rawBody.enableImageGeneration != null
+          ? { enableImageGeneration: rawBody.enableImageGeneration }
+          : {}),
+      ...(hasServerVideo
+        ? { enableVideoGeneration: true }
+        : rawBody.enableVideoGeneration != null
+          ? { enableVideoGeneration: rawBody.enableVideoGeneration }
+          : {}),
       ...(rawBody.enableTTS != null ? { enableTTS: rawBody.enableTTS } : {}),
       ...(rawBody.agentMode ? { agentMode: rawBody.agentMode } : {}),
       ...(rawBody.modelString ? { modelString: rawBody.modelString } : {}),

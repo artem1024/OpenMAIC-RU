@@ -17,11 +17,16 @@
 
 import { NextRequest } from 'next/server';
 import { generateImage, aspectRatioToDimensions } from '@/lib/media/image-providers';
-import { resolveImageApiKey, resolveImageBaseUrl } from '@/lib/server/provider-config';
+import {
+  resolveImageApiKey,
+  resolveImageBaseUrl,
+  getServerImageProviders,
+} from '@/lib/server/provider-config';
 import type { ImageProviderId, ImageGenerationOptions } from '@/lib/media/types';
 import { createLogger } from '@/lib/logger';
 import { apiError, apiSuccess } from '@/lib/server/api-response';
 import { validateUrlForSSRF } from '@/lib/server/ssrf-guard';
+import { isManagedProviderMode, logManagedModeBypass } from '@/lib/server/managed-mode';
 
 const log = createLogger('ImageGeneration API');
 
@@ -38,10 +43,30 @@ export async function POST(request: NextRequest) {
       return apiError('MISSING_REQUIRED_FIELD', 400, 'Missing prompt');
     }
 
-    const providerId = (request.headers.get('x-image-provider') || 'seedream') as ImageProviderId;
-    const clientApiKey = request.headers.get('x-api-key') || undefined;
-    const clientBaseUrl = request.headers.get('x-base-url') || undefined;
+    let providerId = (request.headers.get('x-image-provider') || 'seedream') as ImageProviderId;
+    const managed = isManagedProviderMode();
+    let clientApiKey = request.headers.get('x-api-key') || undefined;
+    let clientBaseUrl = request.headers.get('x-base-url') || undefined;
     const clientModel = request.headers.get('x-image-model') || undefined;
+
+    if (managed) {
+      if (clientApiKey || clientBaseUrl) {
+        logManagedModeBypass({
+          route: '/api/generate/image',
+          header: clientBaseUrl ? 'x-base-url' : 'x-api-key',
+          value: clientBaseUrl || clientApiKey,
+        });
+        clientApiKey = undefined;
+        clientBaseUrl = undefined;
+      }
+      const serverIds = Object.keys(getServerImageProviders()) as ImageProviderId[];
+      if (serverIds.length > 0 && !serverIds.includes(providerId)) {
+        log.info(
+          `Managed mode: overriding client image provider "${providerId}" → "${serverIds[0]}"`,
+        );
+        providerId = serverIds[0];
+      }
+    }
 
     if (clientBaseUrl && process.env.NODE_ENV === 'production') {
       const ssrfError = await validateUrlForSSRF(clientBaseUrl);
