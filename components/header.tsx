@@ -32,6 +32,7 @@ export function Header({ currentSceneTitle }: HeaderProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const isEmbedded = searchParams?.get('embedded') === '1';
+  const showExport = !isEmbedded || searchParams?.get('showExport') === '1';
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [languageOpen, setLanguageOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
@@ -255,7 +256,7 @@ export function Header({ currentSceneTitle }: HeaderProps) {
         </div>}
 
         {/* Export Dropdown */}
-        {!isEmbedded && (
+        {showExport && (
           <div className="relative" ref={exportRef}>
             <button
               onClick={() => {
