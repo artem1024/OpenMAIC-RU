@@ -146,7 +146,7 @@ export function CanvasToolbar({
                 ? 'text-gray-400 dark:text-gray-500'
                 : 'text-gray-600 dark:text-gray-300',
             )}
-            aria-label="Toggle sidebar"
+            aria-label={t('roundtable.aria.toggleSidebar')}
           >
             <LayoutList className="w-3.5 h-3.5" />
           </button>
@@ -181,7 +181,7 @@ export function CanvasToolbar({
                       ? 'text-red-500 dark:text-red-400'
                       : 'text-gray-500 dark:text-gray-400',
                 )}
-                aria-label={ttsMuted ? 'Unmute' : 'Mute'}
+                aria-label={ttsMuted ? t('roundtable.aria.unmute') : t('roundtable.aria.mute')}
               >
                 <VolumeIcon muted={!!ttsMuted} volume={ttsVolume} disabled={!ttsEnabled} />
               </button>
@@ -244,7 +244,7 @@ export function CanvasToolbar({
                         ? 'text-violet-600 dark:text-violet-400 bg-violet-500/10 dark:bg-violet-400/10'
                         : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
                     )}
-                    aria-label="Playback speed"
+                    aria-label={t('roundtable.aria.playbackSpeed')}
                   >
                     {playbackSpeed === 1.5 ? '1.5x' : `${playbackSpeed}x`}
                   </button>
@@ -267,7 +267,7 @@ export function CanvasToolbar({
                 ctrlBtn,
                 'w-6 h-6 text-gray-500 dark:text-gray-400 disabled:opacity-20 disabled:pointer-events-none',
               )}
-              aria-label="Previous scene"
+              aria-label={t('roundtable.aria.previousScene')}
             >
               <ChevronLeft className="w-3.5 h-3.5" />
             </button>
@@ -304,7 +304,7 @@ export function CanvasToolbar({
                   ? 'text-violet-600 dark:text-violet-400'
                   : 'text-gray-500 dark:text-gray-400',
               )}
-              aria-label={engineState === 'playing' ? 'Pause' : 'Play'}
+              aria-label={engineState === 'playing' ? t('roundtable.aria.pause') : t('roundtable.aria.play')}
             >
               {engineState === 'playing' ? (
                 <Pause className="w-3.5 h-3.5" />
@@ -323,7 +323,7 @@ export function CanvasToolbar({
                 ctrlBtn,
                 'w-6 h-6 text-gray-500 dark:text-gray-400 disabled:opacity-20 disabled:pointer-events-none',
               )}
-              aria-label="Next scene"
+              aria-label={t('roundtable.aria.nextScene')}
             >
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
@@ -345,7 +345,7 @@ export function CanvasToolbar({
                         ? 'text-violet-600 dark:text-violet-400'
                         : 'text-gray-500 dark:text-gray-400',
                     )}
-                    aria-label="Auto-play"
+                    aria-label={t('roundtable.aria.autoPlay')}
                   >
                     <Repeat className="w-3.5 h-3.5" />
                   </button>
@@ -392,7 +392,7 @@ export function CanvasToolbar({
                 ? 'text-gray-400 dark:text-gray-500'
                 : 'text-gray-600 dark:text-gray-300',
             )}
-            aria-label="Toggle chat"
+            aria-label={t('roundtable.aria.toggleChat')}
           >
             <MessageSquare className="w-3.5 h-3.5" />
           </button>

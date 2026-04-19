@@ -503,7 +503,7 @@ export function Roundtable({
                       <div className="w-10 h-10 rounded-full bg-white dark:bg-gray-800 overflow-hidden relative z-10 shadow-sm border border-gray-50 dark:border-gray-700">
                         <img
                           src={teacherAvatar}
-                          alt="Teacher"
+                          alt={t('roundtable.teacher')}
                           className="w-full h-full object-cover"
                         />
                       </div>
@@ -558,11 +558,21 @@ export function Roundtable({
                             </span>
                           </div>
                         </div>
-                        {teacherConfig?.persona && (
-                          <p className="text-xs text-muted-foreground mt-2 leading-relaxed whitespace-pre-line">
-                            {teacherConfig.persona}
-                          </p>
-                        )}
+                        {(() => {
+                          const teacherId = teacherParticipant?.id || '';
+                          const i18nDescription = t(
+                            `settings.agentDescriptions.${teacherId}`,
+                          );
+                          const description =
+                            i18nDescription !== `settings.agentDescriptions.${teacherId}`
+                              ? i18nDescription
+                              : teacherConfig?.persona || '';
+                          return description ? (
+                            <p className="text-xs text-muted-foreground mt-2 leading-relaxed whitespace-pre-line">
+                              {description}
+                            </p>
+                          ) : null;
+                        })()}
                       </>
                     );
                   })()}
@@ -1442,7 +1452,7 @@ export function Roundtable({
                   )}
                 />
                 <div className="w-14 h-14 rounded-full bg-gray-50 dark:bg-gray-800 overflow-hidden relative z-10 shadow-sm border border-gray-50 dark:border-gray-700 text-2xl">
-                  <AvatarDisplay src={userAvatar} alt="You" />
+                  <AvatarDisplay src={userAvatar} alt={t('roundtable.you')} />
                 </div>
                 <div className="absolute top-0 right-0 w-5 h-5 bg-white dark:bg-gray-800 rounded-full flex items-center justify-center shadow-md border border-gray-100 dark:border-gray-700 z-20">
                   <div

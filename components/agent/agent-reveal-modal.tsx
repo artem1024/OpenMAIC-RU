@@ -250,7 +250,11 @@ export function AgentRevealModal({ agents, open, onClose, onAllRevealed }: Agent
                               className="max-w-full truncate text-center text-[13px] font-bold tracking-wide"
                               style={{ color: agent.color }}
                             >
-                              {agent.name}
+                              {(() => {
+                                const key = `settings.agentNames.${agent.id}`;
+                                const translated = t(key);
+                                return translated !== key ? translated : agent.name;
+                              })()}
                             </h3>
                             <span
                               className="inline-flex items-center gap-1 rounded-full px-2 py-px text-[10px] font-medium"
@@ -287,7 +291,11 @@ export function AgentRevealModal({ agents, open, onClose, onAllRevealed }: Agent
                           {/* Persona text — fills remaining space */}
                           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3.5 pt-1.5 pb-3">
                             <p className="text-left text-[10.5px] leading-[1.65] text-zinc-600 dark:text-zinc-400">
-                              {agent.persona}
+                              {(() => {
+                                const key = `settings.agentDescriptions.${agent.id}`;
+                                const translated = t(key);
+                                return translated !== key ? translated : agent.persona;
+                              })()}
                             </p>
                           </div>
 

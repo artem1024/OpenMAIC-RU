@@ -94,7 +94,13 @@ export function AgentConfigPanel() {
                 <div className="space-y-2">
                   <div>
                     <p className="text-xs font-medium text-muted-foreground mb-1">{t('settings.agentPersona')}</p>
-                    <p className="text-sm line-clamp-2">{agent.persona}</p>
+                    <p className="text-sm line-clamp-2">
+                      {(() => {
+                        const key = `settings.agentDescriptions.${agent.id}`;
+                        const translated = t(key);
+                        return translated !== key ? translated : agent.persona;
+                      })()}
+                    </p>
                   </div>
                   <div>
                     <p className="text-xs font-medium text-muted-foreground mb-1">
