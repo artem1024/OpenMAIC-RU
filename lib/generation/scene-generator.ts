@@ -24,6 +24,7 @@ import { createStageAPI } from '@/lib/api/stage-api';
 import { generatePBLContent } from '@/lib/pbl/generate-pbl';
 import { buildPrompt, PROMPT_IDS } from './prompts';
 import { postProcessInteractiveHtml } from './interactive-post-processor';
+import { fitSlideLayout } from './slide-layout-fit';
 import { parseActionsFromStructuredOutput } from './action-parser';
 import { parseJsonResponse } from './json-repair';
 import {
@@ -606,6 +607,14 @@ async function generateSlideContent(
     rotate: 0,
   })) as PPTElement[];
 
+  // Layout-fit pass: AI tends to undersize text containers for Cyrillic;
+  // grow shape backgrounds and shift stacked cards so text doesn't overflow.
+  const fit = fitSlideLayout(processedElements, { width: 1000, height: 562.5 });
+  for (const w of fit.warnings) {
+    log.warn(`[${outline.title}] ${w}`);
+  }
+  const fittedElements = fit.elements;
+
   // Process background
   let background: SlideBackground | undefined;
   if (generatedData.background) {
@@ -620,7 +629,7 @@ async function generateSlideContent(
   }
 
   return {
-    elements: processedElements,
+    elements: fittedElements,
     background,
     remark: generatedData.remark || outline.description,
   };

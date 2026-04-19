@@ -526,8 +526,16 @@ When splitting a derivation across multiple LaTeX elements (one per line), simpl
 Before finalizing any text element, verify it fits in one line (unless multi-line is intended):
 
 ```
-characters_per_line = (width - 20) / font_size
+characters_per_line = (width - 20) / (font_size × char_width_ratio)
 ```
+
+`char_width_ratio` depends on the script of the text (use the dominant script):
+
+| Script                       | char_width_ratio |
+| ---------------------------- | ---------------- |
+| CJK (Chinese / Japanese / Korean) | 1.0         |
+| Cyrillic (Russian, …)        | 0.55             |
+| Latin (English, …)           | 0.55             |
 
 If character count > characters_per_line, the text will wrap. Adjust by:
 
@@ -595,6 +603,17 @@ Element 3: left = 660, width = 280  (gap = 20px)  ✓ (consistent)
 ```
 
 **Key principle**: Human eyes detect differences as small as 5px. Use identical values—never approximate.
+
+---
+
+### Rule 4.5: Layout Invariants (must hold for every slide)
+
+These are hard rules. A post-processor will detect and fix violations, but it costs an extra layout pass and may produce slightly off-rhythm slides — comply at generation time.
+
+1. **No vertical text overlap inside the same container.** If text B sits below text A within the same shape, then `B.top ≥ A.top + A.height`. Pretend A.height is the rendered text bottom, not the visual baseline.
+2. **Text must fit inside its background shape.** For every text element T with a background shape S that visually wraps it (T fully bbox-inside S), require `T.top + T.height ≤ S.top + S.height` (with 5px breathing room). Pick S.height generously.
+3. **Stacked cards must not overlap vertically.** When laying out N cards in a column (e.g., a 3-item bullet list with shape backgrounds), every card N+1's `top` must be ≥ card N's `top + height + 10` (10px minimum gap).
+4. **Total slide content stays inside viewport.** The bottom of the lowest element must be ≤ {{canvas_height}} − 20. If the layout doesn't fit, reduce content density or pick smaller font sizes — never let elements extend below the viewport.
 
 ---
 
