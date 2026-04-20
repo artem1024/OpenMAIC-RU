@@ -39,7 +39,7 @@ When user requirements don't specify, use these defaults:
 
 | Information         | Default Value          |
 | ------------------- | ---------------------- |
-| Course Duration     | 15-20 minutes          |
+| Course Duration     | 20-30 minutes          |
 | Target Audience     | General learners       |
 | Teaching Style      | Interactive (engaging) |
 | Visual Style        | Professional           |
@@ -293,7 +293,8 @@ You must output a JSON array where each element is a scene outline object:
 3. **quiz type must include quizConfig**
 4. **interactive type must include interactiveConfig** - with conceptName, conceptOverview, designIdea, and subject
    5b. **pbl type must include pblConfig** - with projectTopic, projectDescription, targetSkills, issueCount, and language
-5. Arrange appropriate number of scenes based on inferred duration (typically 1-2 scenes per minute)
+5. Arrange appropriate number of scenes based on inferred duration. Aim for **1.5-2 scenes per minute**, with a hard minimum of **1 scene per minute**. For a 20-minute default course this means at least 20 scenes total (including quizzes, interactive, and summary). Do not produce fewer than 12 scenes for any course of 15+ minutes — a thin outline leaves the student with only two or three terms and defeats the purpose of a structured lesson.
+5a. **Content density per slide scene**: every `slide` scene must carry at least **4 keyPoints** and up to 7. A slide with 1-3 keyPoints is too shallow — either merge it with a neighbor or flesh it out with definitions, examples, contrasts, or concrete data. `keyPoints` are the backbone that downstream stages expand into actual slide copy, so being stingy here directly produces empty-looking slides.
 6. Insert quizzes at appropriate points for knowledge checks
 7. Use interactive scenes sparingly (max 1-2 per course) and only when the concept truly benefits from hands-on interaction
 8. **Language Requirement**: Strictly output all content in the language specified by the user
