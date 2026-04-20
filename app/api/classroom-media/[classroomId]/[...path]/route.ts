@@ -71,12 +71,30 @@ export async function GET(
       },
     });
 
+    // ETag по mtime+size — при перезвучке файл меняется (mtime обновляется),
+    // браузер получает 200 с новым содержимым, иначе 304. Без `immutable`,
+    // т.к. имена mp3-файлов переиспользуются при regen-е голоса классрума.
+    const etag = `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
+    const ifNoneMatch = _req.headers.get('if-none-match');
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      stream.destroy();
+      return new NextResponse(null, {
+        status: 304,
+        headers: {
+          'ETag': etag,
+          'Cache-Control': 'public, max-age=300, must-revalidate',
+        },
+      });
+    }
+
     return new NextResponse(webStream, {
       status: 200,
       headers: {
         'Content-Type': contentType,
         'Content-Length': String(stat.size),
-        'Cache-Control': 'public, max-age=86400, immutable',
+        'Cache-Control': 'public, max-age=300, must-revalidate',
+        'ETag': etag,
+        'Last-Modified': new Date(stat.mtimeMs).toUTCString(),
       },
     });
   } catch (error) {
