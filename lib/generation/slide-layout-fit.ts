@@ -10,7 +10,10 @@
  *   2. Grow background shape elements to wrap their contained texts.
  *   3. Shift cards (groups of elements stacked vertically in the same column)
  *      down so they don't overlap after step 2.
- *   4. Warn if the result overflows the viewport (caller decides what to do).
+ *   4. Pull overflowing columns up into spare headroom above them.
+ *   5. Squeeze inter-card gaps in columns that still overflow.
+ *   6. Drop cards that start entirely below the viewport (AI placed them there).
+ *   7. Warn about any residual overflow.
  */
 import type { PPTElement, PPTTextElement, PPTShapeElement } from '@/lib/types/slides';
 
@@ -38,6 +41,15 @@ const SHAPE_PADDING = 5;
 
 // Minimum gap to enforce between sibling cards when shifting.
 const CARD_GAP = 10;
+
+// Minimum gap to preserve when squeezing columns to fit viewport.
+const MIN_SQUEEZED_GAP = 2;
+
+// Top margin: pull-up never brings a card above this Y.
+const MIN_COLUMN_TOP = 10;
+
+// Safe bottom: we target leaving a small margin from the canvas edge.
+const SAFE_BOTTOM_MARGIN = 5;
 
 // Tolerance for bbox containment / overlap checks (handles AI off-by-1).
 const BBOX_TOL = 3;
@@ -328,19 +340,79 @@ export function fitSlideLayout(
     }
   }
 
-  // Step 4: warn if anything ended up outside the viewport vertically.
+  const safeBottom = canvas.height - SAFE_BOTTOM_MARGIN;
+
+  // Step 4: per-column pull-up — if a column overflows, shift it up into the
+  // headroom above its topmost card (capped by MIN_COLUMN_TOP).
+  for (const col of columns) {
+    if (col.length === 0) continue;
+    const lastBottom = col[col.length - 1].bottom;
+    if (lastBottom <= safeBottom) continue;
+    const overflow = lastBottom - safeBottom;
+    const headroom = col[0].top - MIN_COLUMN_TOP;
+    const pull = Math.min(overflow, Math.max(0, headroom));
+    if (pull > 0) {
+      for (const c of col) shiftCard(c, -pull);
+    }
+  }
+
+  // Step 5: per-column gap squeeze — if still overflowing, compress inter-card
+  // gaps down to MIN_SQUEEZED_GAP, distributing the reduction proportionally.
+  for (const col of columns) {
+    if (col.length < 2) continue;
+    const lastBottom = col[col.length - 1].bottom;
+    if (lastBottom <= safeBottom) continue;
+    const overflow = lastBottom - safeBottom;
+    let totalReducible = 0;
+    for (let i = 1; i < col.length; i++) {
+      const gap = col[i].top - col[i - 1].bottom;
+      totalReducible += Math.max(0, gap - MIN_SQUEEZED_GAP);
+    }
+    if (totalReducible <= 0) continue;
+    const ratio = Math.min(1, overflow / totalReducible);
+    for (let i = 1; i < col.length; i++) {
+      const gap = col[i].top - col[i - 1].bottom;
+      const reducible = Math.max(0, gap - MIN_SQUEEZED_GAP);
+      const reduce = reducible * ratio;
+      if (reduce <= 0) continue;
+      for (let j = i; j < col.length; j++) shiftCard(col[j], -reduce);
+    }
+  }
+
+  // Step 6: drop cards that start entirely below the safe viewport — they are
+  // invisible by definition and only produce warnings. AI sometimes stacks an
+  // extra block far below when it runs out of composition ideas.
+  const dropBound = canvas.height - 20;
+  const dropIds = new Set<string>();
+  let droppedCount = 0;
+  for (const c of cards) {
+    if (c.top >= dropBound) {
+      for (const m of c.members) dropIds.add(m.id);
+      droppedCount++;
+    }
+  }
+  let finalElements: PPTElement[] = cloned;
+  if (dropIds.size > 0) {
+    finalElements = cloned.filter((e) => !dropIds.has(e.id));
+    warnings.push(
+      `slide-layout-fit: dropped ${droppedCount} card(s)/${dropIds.size} element(s) entirely below viewport`,
+    );
+  }
+
+  // Step 7: final warn — residual overflow after pull-up + squeeze + drop.
   let maxBottom = 0;
-  for (const e of sized) {
+  for (const e of finalElements) {
+    if (!hasHeight(e)) continue;
     const b = e.top + e.height;
     if (b > maxBottom) maxBottom = b;
   }
   if (maxBottom > canvas.height + BBOX_TOL) {
     warnings.push(
-      `slide-layout-fit: vertical overflow — max element bottom ${maxBottom.toFixed(
+      `slide-layout-fit: residual overflow — max element bottom ${maxBottom.toFixed(
         1,
       )}px exceeds canvas height ${canvas.height}px`,
     );
   }
 
-  return { elements: cloned, warnings };
+  return { elements: finalElements, warnings };
 }

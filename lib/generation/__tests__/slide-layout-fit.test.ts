@@ -231,26 +231,72 @@ describe('fitSlideLayout', () => {
     expect(d.top).toBeGreaterThanOrEqual(t.top + t.height);
   });
 
-  test('warns when result overflows viewport', () => {
-    // Place a tall text near the bottom that, after measuring, exceeds canvas height.
+  test('warns when overflow cannot be fixed by pull-up or squeeze', () => {
+    // Text starts near the top (no headroom to pull up) and is so tall it
+    // overflows even after fitting. Single-element column has no gaps to squeeze.
     const els: PPTElement[] = [
       text(
         'x',
         50,
-        500,
+        10,
         300,
         20,
-        // 5+ lines worth at 20px wrapping in 300px width
         '<p style="font-size: 20px;">' +
           'Очень длинный текст, который никак не помещается в свой бокс и растёт вниз гораздо ниже viewport-границы canvas-а слайда.'.repeat(
-            3,
+            5,
           ) +
           '</p>',
       ),
     ];
     const { warnings } = fitSlideLayout(els, CANVAS);
-    expect(warnings.length).toBe(1);
-    expect(warnings[0]).toMatch(/overflow/i);
+    expect(warnings.some((w) => /overflow/i.test(w))).toBe(true);
+  });
+
+  test('pulls a single-card column up when the card overflows and has headroom', () => {
+    // Card at top=500 with computed bottom=680 → overflows 562.5 canvas.
+    // With 500px of headroom above, pull-up should move it entirely into view.
+    const els: PPTElement[] = [
+      shape('bg', 60, 500, 420, 180),
+      text('hdr', 80, 520, 380, 52, '<p style="font-size: 20px;"><strong>Исторический контекст</strong></p>'),
+      text('body', 80, 572, 380, 103, '<p style="font-size: 18px;">• Пункт один</p><p style="font-size: 18px;">• Пункт два</p><p style="font-size: 18px;">• Пункт три</p>'),
+    ];
+    const { elements, warnings } = fitSlideLayout(els, CANVAS);
+    const bg = elements.find((e) => e.id === 'bg') as PPTShapeElement;
+    const body = elements.find((e) => e.id === 'body') as PPTTextElement;
+    // Pulled up enough that nothing overflows.
+    expect(bg.top + bg.height).toBeLessThanOrEqual(CANVAS.height + 3);
+    expect(body.top + body.height).toBeLessThanOrEqual(CANVAS.height + 3);
+    // Order preserved: body still after header.
+    expect(body.top).toBeGreaterThan(bg.top);
+    expect(warnings.filter((w) => /residual/i.test(w))).toHaveLength(0);
+  });
+
+  test('squeezes inter-card gaps when column still overflows after pull-up', () => {
+    // Three cards at top=10, 200, 400. Top card already at minimum — no pull-up possible.
+    // Gaps 90+90 = 180px of squeeze room. Overflow must be satisfied by squeezing.
+    const els: PPTElement[] = [
+      shape('c1', 60, 10, 400, 100),
+      shape('c2', 60, 200, 400, 100),
+      shape('c3', 60, 400, 400, 200), // bottom=600 → overflow 42.5
+    ];
+    const { elements } = fitSlideLayout(els, CANVAS);
+    const c3 = elements.find((e) => e.id === 'c3') as PPTShapeElement;
+    expect(c3.top + c3.height).toBeLessThanOrEqual(CANVAS.height + 3);
+  });
+
+  test('drops cards that pull-up+squeeze cannot rescue', () => {
+    // c1 fills most of the viewport → no headroom, no squeezable gap for c2.
+    // c2 at top=700 cannot be brought back — drop it.
+    const els: PPTElement[] = [
+      shape('c1', 60, 10, 400, 545),
+      shape('below', 60, 700, 400, 100),
+      text('bt', 80, 720, 360, 60, '<p style="font-size: 16px;">invisible</p>'),
+    ];
+    const { elements, warnings } = fitSlideLayout(els, CANVAS);
+    expect(elements.find((e) => e.id === 'below')).toBeUndefined();
+    expect(elements.find((e) => e.id === 'bt')).toBeUndefined();
+    expect(elements.find((e) => e.id === 'c1')).toBeDefined();
+    expect(warnings.some((w) => /dropped/i.test(w))).toBe(true);
   });
 
   test('does not modify the input array (returns new objects)', () => {
