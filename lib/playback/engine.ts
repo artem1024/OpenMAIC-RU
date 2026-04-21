@@ -468,33 +468,21 @@ export class PlaybackEngine {
           .play(speechAction.audioId || '', speechAction.audioUrl)
           .then((audioStarted) => {
             if (!audioStarted) {
-              // No pre-generated audio — always try browser TTS as fallback
-              const settings = useSettingsStore.getState();
-              if (
-                settings.ttsEnabled &&
-                typeof window !== 'undefined' &&
-                window.speechSynthesis
-              ) {
-                this.playBrowserTTS(speechAction);
-              } else {
-                scheduleReadingTimer();
-              }
+              // [osvaivai:no-browser-tts] DO NOT RE-ENABLE — 2026-04-21
+              // Browser Web Speech API для русского нечитабельна и периодически
+              // накладывается поверх Gemini TTS (race). Фолбэк на browser TTS
+              // убран; вместо него — таймер чтения (тишина ≈ времени реплики).
+              // При мерже из upstream сохранить этот комментарий и НЕ восстанавливать
+              // вызов this.playBrowserTTS(...). См. memory/feedback_tts_voice.md.
+              scheduleReadingTimer();
             }
           })
           .catch((err) => {
-            // audio.play() rejected (autoplay policy, network error, etc.)
-            // Fall back to browser TTS instead of silent timer
-            log.warn('Audio playback failed, trying browser TTS:', err);
-            const settings = useSettingsStore.getState();
-            if (
-              settings.ttsEnabled &&
-              typeof window !== 'undefined' &&
-              window.speechSynthesis
-            ) {
-              this.playBrowserTTS(speechAction);
-            } else {
-              scheduleReadingTimer();
-            }
+            // [osvaivai:no-browser-tts] DO NOT RE-ENABLE — 2026-04-21
+            // См. комментарий выше. Ранее здесь был фолбэк на window.speechSynthesis
+            // при отказе audio.play() (autoplay policy / сеть). Теперь — reading timer.
+            log.warn('Audio playback failed, using silent reading timer:', err);
+            scheduleReadingTimer();
           });
         break;
       }
@@ -599,6 +587,19 @@ export class PlaybackEngine {
    * Uses cancel+re-speak for pause/resume (Firefox compatibility).
    */
   private playBrowserTTS(speechAction: SpeechAction): void {
+    // [osvaivai:no-browser-tts] DO NOT RE-ENABLE — 2026-04-21
+    // Оставлен как заглушка: тело метода сохранено ниже, но вход запрещён.
+    // Если апстрим снова добавит вызов playBrowserTTS, он ничего не сделает,
+    // а залогированное предупреждение поможет заметить регрессию. Причина
+    // блокировки: browser Web Speech API для русского нечитабельна и
+    // перебивала Gemini TTS (race при одновременном воспроизведении).
+    // См. memory/feedback_tts_voice.md.
+    log.warn('[osvaivai] playBrowserTTS blocked — browser TTS is disabled in this fork');
+    // Ведём себя как если бы речь закончилась мгновенно, чтобы движок
+    // пошёл дальше и не завис.
+    this.callbacks.onSpeechEnd?.();
+    if (this.mode === 'playing') this.processNext();
+    return;
     this.browserTTSChunks = this.splitIntoChunks(speechAction.text);
     this.browserTTSChunkIndex = 0;
     this.browserTTSPausedChunks = [];
