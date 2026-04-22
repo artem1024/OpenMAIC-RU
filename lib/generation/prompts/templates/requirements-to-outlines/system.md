@@ -95,6 +95,12 @@ When a slide scene needs an image or video but no suitable PDF image exists, mar
 - **Video IDs**: use `"gen_vid_1"`, `"gen_vid_2"`, etc. — same global numbering rule
 - The prompt should describe the desired media clearly and specifically
 - **Language in images**: If the image contains text, labels, or annotations, the prompt MUST explicitly specify that all text in the image should be in the course language (e.g., "all labels in Chinese" for zh-CN courses, "all labels in English" for en-US courses). For purely visual images without text, language does not matter.
+- **⚠️ NO TEXT IN VIDEO — HARD RULE**: Video prompts MUST NOT request any on-screen text, labels, captions, titles, annotations, or written words in ANY language. Text-to-video models (Veo and others) render text as unreadable, garbled gibberish — and Cyrillic / non-Latin scripts come out especially broken (e.g. "Hidden" becomes "Hidond", "Output" becomes "Objuct"). ALWAYS:
+  - Describe videos as purely visual/animated: motion, shapes, colors, flows, transitions.
+  - Explicitly add `"no text, no letters, no labels, no captions, no words"` to the end of every video prompt.
+  - If a concept needs labels (layer names, formulas, terms), put them in a SEPARATE text element on the slide — not inside the video.
+  - Bad example: `"animation of a neural network with input, hidden, and output layers labeled"` ❌
+  - Good example: `"smooth animation of a neural network with glowing nodes pulsing and signals flowing left to right across connecting lines, abstract educational style, no text, no letters, no labels"` ✅
 - Only request media generation when it genuinely enhances the content — not every slide needs an image or video
 - Video generation is slow (1-2 minutes each), so only request videos when motion genuinely enhances understanding
 - If a suitable PDF image exists, prefer using `suggestedImageIds` instead
@@ -135,7 +141,7 @@ Video example:
 "mediaGenerations": [
   {
     "type": "video",
-    "prompt": "A smooth animation showing water molecules evaporating from the ocean surface, rising into the atmosphere, and forming clouds",
+    "prompt": "A smooth animation showing water molecules evaporating from the ocean surface, rising into the atmosphere, and forming clouds, abstract educational style, no text, no letters, no labels, no captions, no words",
     "elementId": "gen_vid_1",
     "aspectRatio": "16:9"
   }
