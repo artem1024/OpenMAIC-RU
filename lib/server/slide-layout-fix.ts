@@ -194,6 +194,42 @@ function growTextHeight(
   return changed;
 }
 
+const SATELLITE_GAP = 20;
+const DECOR_HEIGHT = 12;
+
+/**
+ * Find "satellite" decorations that visually belong to `cont` but don't fall
+ * geometrically inside it: thin shape lines (h <= DECOR_HEIGHT) just above or
+ * just below the container, horizontally overlapping with it, not already
+ * claimed by any container.
+ *
+ * Without this, a clamp-up shift moves the container but strands the decorative
+ * underline where it was — producing the "blue strike-through through text"
+ * artifact observed on lesson 5 scene 18.
+ */
+function findSatellites(
+  cont: AnyElement,
+  elements: AnyElement[],
+  claimed: Set<AnyElement>,
+): AnyElement[] {
+  const sats: AnyElement[] = [];
+  for (const e of elements) {
+    if (e === cont) continue;
+    if (claimed.has(e)) continue;
+    if (e.type !== 'shape') continue;
+    if (h(e) > DECOR_HEIGHT) continue;
+    const hOverlap = left(e) < right(cont) && left(cont) < right(e);
+    if (!hOverlap) continue;
+    const aboveGap = top(cont) - bottom(e);
+    const belowGap = top(e) - bottom(cont);
+    if ((aboveGap >= -1 && aboveGap <= SATELLITE_GAP) ||
+        (belowGap >= -1 && belowGap <= SATELLITE_GAP)) {
+      sats.push(e);
+    }
+  }
+  return sats;
+}
+
 function clampOffscreen(
   elements: AnyElement[],
   vpH: number,
@@ -203,6 +239,7 @@ function clampOffscreen(
   const containers = findContainers(elements);
   const childrenOf = new Map<string, AnyElement[]>();
   for (const c of containers) childrenOf.set(c.id, []);
+  const claimed = new Set<AnyElement>();
   for (const e of elements) {
     if (containers.includes(e)) continue;
     let best: AnyElement | null = null;
@@ -210,28 +247,39 @@ function clampOffscreen(
       if (c === e || !isInside(e, c)) continue;
       if (best === null || h(c) * w(c) < h(best) * w(best)) best = c;
     }
-    if (best) childrenOf.get(best.id)!.push(e);
+    if (best) {
+      childrenOf.get(best.id)!.push(e);
+      claimed.add(e);
+    }
   }
 
   const moved = new Set<AnyElement>();
 
-  // Phase 1: container-unit clamp.
+  // Phase 1: container-unit clamp (including satellite decorations).
   for (const cont of containers) {
     const overflow = bottom(cont) - vpH;
     if (overflow <= 1) continue;
     const maxUp = top(cont);
     const shift = Math.min(overflow + MARGIN, maxUp);
     if (shift <= 0) continue;
+    const satellites = findSatellites(cont, elements, claimed);
     cont.top = top(cont) - shift;
     moved.add(cont);
     for (const child of childrenOf.get(cont.id)!) {
       child.top = top(child) - shift;
       moved.add(child);
     }
+    for (const sat of satellites) {
+      sat.top = top(sat) - shift;
+      moved.add(sat);
+      claimed.add(sat);
+    }
     report.push(
-      `clamp container ${cont.id}: shifted -${shift} (h=${h(cont)}, +${childrenOf.get(cont.id)!.length} children)`,
+      `clamp container ${cont.id}: shifted -${shift} (h=${h(cont)}, +${childrenOf.get(cont.id)!.length} children${
+        satellites.length > 0 ? `, +${satellites.length} decoration(s)` : ''
+      })`,
     );
-    changed += 1 + childrenOf.get(cont.id)!.length;
+    changed += 1 + childrenOf.get(cont.id)!.length + satellites.length;
   }
 
   // Phase 2: per-element clamp for anything not yet moved.

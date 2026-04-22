@@ -303,6 +303,40 @@ function shiftCard(card: Card, dy: number) {
   card.bottom += dy;
 }
 
+/**
+ * Deduplicate shape elements with near-identical bbox. AI (and the layout-fix
+ * pass) occasionally emit two shapes stacked exactly on top of each other —
+ * they're invisible to the user (bottom one is occluded) but confuse card
+ * building (both claim to own the same children). Keep the first, drop the
+ * rest. Lines and other non-shape elements are untouched.
+ */
+function dedupeShapes(elements: PPTElement[]): { kept: PPTElement[]; dropped: number } {
+  const DUP_TOL = 2;
+  const kept: PPTElement[] = [];
+  const seenShapes: PPTShapeElement[] = [];
+  let dropped = 0;
+  for (const el of elements) {
+    if (!isShape(el)) {
+      kept.push(el);
+      continue;
+    }
+    const dup = seenShapes.find(
+      (s) =>
+        Math.abs(s.left - el.left) <= DUP_TOL &&
+        Math.abs(s.top - el.top) <= DUP_TOL &&
+        Math.abs(s.width - el.width) <= DUP_TOL &&
+        Math.abs(s.height - el.height) <= DUP_TOL,
+    );
+    if (dup) {
+      dropped += 1;
+      continue;
+    }
+    seenShapes.push(el);
+    kept.push(el);
+  }
+  return { kept, dropped };
+}
+
 export function fitSlideLayout(
   elements: PPTElement[],
   canvas: { width: number; height: number },
@@ -311,7 +345,15 @@ export function fitSlideLayout(
   if (!elements || elements.length === 0) return { elements: elements ?? [], warnings };
 
   // Work on shallow copies — caller treats result as new state.
-  const cloned: PPTElement[] = elements.map((e) => ({ ...e }));
+  let cloned: PPTElement[] = elements.map((e) => ({ ...e }));
+
+  // Step 0: drop duplicate shapes before card building so they don't create
+  // phantom containers with identical bbox.
+  const deduped = dedupeShapes(cloned);
+  if (deduped.dropped > 0) {
+    cloned = deduped.kept;
+    warnings.push(`slide-layout-fit: dropped ${deduped.dropped} duplicate shape(s)`);
+  }
 
   // Skip line elements: they use start/end coordinates, not top/height. They
   // pass through untouched and are not laid out by this pass.
@@ -397,6 +439,18 @@ export function fitSlideLayout(
     warnings.push(
       `slide-layout-fit: dropped ${droppedCount} card(s)/${dropIds.size} element(s) entirely below viewport`,
     );
+  }
+
+  // Step 6b: round top/left/width/height to integers. Step 5's ratio
+  // multiplication otherwise leaves fractional pixels (e.g. 200.39) that
+  // accumulate into hairline misalignment between elements that should share
+  // a row and surprise downstream tooling expecting integer geometry.
+  for (const e of finalElements) {
+    if (!hasHeight(e)) continue;
+    e.top = Math.round(e.top);
+    e.left = Math.round(e.left);
+    e.width = Math.round(e.width);
+    e.height = Math.round(e.height);
   }
 
   // Step 7: final warn — residual overflow after pull-up + squeeze + drop.
