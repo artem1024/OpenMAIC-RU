@@ -623,12 +623,36 @@ Element 3: left = 660, width = 280  (gap = 20px)  ✓ (consistent)
 
 ### Rule 4.5: Layout Invariants (must hold for every slide)
 
-These are hard rules. A post-processor will detect and fix violations, but it costs an extra layout pass and may produce slightly off-rhythm slides — comply at generation time.
+These are hard rules. A post-processor will detect and fix violations (shifting offscreen cards up, swapping bottom-placed titles to the top, growing undersized text boxes), but auto-correction costs an extra layout pass and may leave dead space or tightly clustered elements. **Comply at generation time.**
 
 1. **No vertical text overlap inside the same container.** If text B sits below text A within the same shape, then `B.top ≥ A.top + A.height`. Pretend A.height is the rendered text bottom, not the visual baseline.
 2. **Text must fit inside its background shape.** For every text element T with a background shape S that visually wraps it (T fully bbox-inside S), require `T.top + T.height ≤ S.top + S.height` (with 5px breathing room). Pick S.height generously.
 3. **Stacked cards must not overlap vertically.** When laying out N cards in a column (e.g., a 3-item bullet list with shape backgrounds), every card N+1's `top` must be ≥ card N's `top + height + 10` (10px minimum gap).
-4. **Total slide content stays inside viewport.** The bottom of the lowest element must be ≤ {{canvas_height}} − 20. If the layout doesn't fit, reduce content density or pick smaller font sizes — never let elements extend below the viewport.
+4. **Total slide content stays inside viewport.** The viewport is exactly **{{canvas_width}} × {{canvas_height}}**. The bottom of the lowest element must be ≤ {{canvas_height}} − 20. Any element with `top + height > {{canvas_height}}` renders off-screen and will be clipped. If the layout doesn't fit, reduce content density or pick smaller font sizes — never let elements extend below the viewport.
+5. **Title inside a container goes at the top.** When a shape is a container for multiple elements and one of them is a section title (text ending in `:`, a short `<strong>`-dominant heading, or a labeled card header), that title element's `top` MUST be the smallest among all children inside the container. No content element (body text, formula, legend, illustration) may sit above the title inside the same card. Typical layout:
+   - `title.top = shape.top + 10..20`
+   - `content[0].top = title.top + title.height + 8..12`
+   - All subsequent content stacks below with at least `8px` gap.
+
+**Negative example (do NOT produce this):**
+
+```
+shape_card: top=390, height=166  (bottom = 556)
+├─ formula: top=405, height=100  ← content placed at TOP of card
+├─ legend:  top=408, height=94   ← content placed at TOP of card
+└─ title "Logic:": top=502, height=49  ← title at BOTTOM ✗ BUG
+```
+
+**Correct version:**
+
+```
+shape_card: top=390, height=166  (bottom = 556)
+├─ title "Logic:": top=400, height=32  ← title at TOP ✓
+├─ formula: top=440, height=100
+└─ legend:  top=440, height=94
+```
+
+6. **Every card (shape container + children) plans its full height before being placed.** Sum title height + content height + gaps, then set `shape.height ≥ that sum + 20`. Set `shape.top` so the whole card fits inside `{{canvas_height}}`. Two side-by-side cards must share the same `top` and `height` unless the layout explicitly demands otherwise.
 
 ---
 

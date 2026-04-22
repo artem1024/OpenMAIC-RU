@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import type { NextRequest } from 'next/server';
 import type { Scene, Stage } from '@/lib/types/stage';
+import { fixSlideLayouts } from '@/lib/server/slide-layout-fix';
 
 export const CLASSROOMS_DIR = path.join(process.cwd(), 'data', 'classrooms');
 export const CLASSROOM_JOBS_DIR = path.join(process.cwd(), 'data', 'classroom-jobs');
@@ -78,6 +79,21 @@ export async function persistClassroom(
   },
   baseUrl: string,
 ): Promise<PersistedClassroomData & { url: string }> {
+  // Auto-correct layout violations (offscreen cards, title-at-bottom, undersized
+  // text boxes) before persistence. Mutates scenes in place.
+  const layoutReports = fixSlideLayouts(data.scenes);
+  if (layoutReports.length > 0) {
+    const total = layoutReports.reduce((s, r) => s + r.changes, 0);
+    console.log(
+      `[persistClassroom ${data.id}] layout-fix applied ${total} changes across ${layoutReports.length} scenes`,
+    );
+    for (const r of layoutReports) {
+      console.log(
+        `  scene #${r.sceneIndex} "${r.sceneTitle.slice(0, 50)}": ${r.messages.join('; ')}`,
+      );
+    }
+  }
+
   const classroomData: PersistedClassroomData = {
     id: data.id,
     stage: data.stage,
