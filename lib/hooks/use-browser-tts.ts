@@ -64,68 +64,33 @@ export function useBrowserTTS(options: UseBrowserTTSOptions = {}) {
       // [osvaivai:no-browser-tts] DO NOT RE-ENABLE — 2026-04-21
       // Браузерный Web Speech API заблокирован в этом форке: для русского
       // языка звук неразборчив и приводил к подмене женского Gemini-голоса
-      // мужской «кашей» при паузе/возобновлении. Хук оставлен как dead code,
-      // чтобы не ломать импорты, если он где-то окажется. Любой вызов speak()
-      // тихо уходит в onError.
+      // мужской «кашей» при паузе/возобновлении. Хук оставлен как заглушка,
+      // чтобы не ломать импорты; любой вызов speak() тихо уходит в onError.
+      // Исходную реализацию можно восстановить из git history (до 6997e3e).
       void text;
       void voiceURI;
+      void rate;
+      void pitch;
+      void volume;
+      void lang;
+      void availableVoices;
+      void utteranceRef;
+      void setIsSpeaking;
+      void setIsPaused;
+      void onStart;
+      void onEnd;
       onError?.('Browser-native TTS disabled in this build');
-      return;
-
-      if (typeof window === 'undefined' || !window.speechSynthesis) {
-        onError?.('Browser does not support Web Speech API');
-        return;
-      }
-
-      // Cancel any ongoing speech
-      window.speechSynthesis.cancel();
-
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = rate;
-      utterance.pitch = pitch;
-      utterance.volume = volume;
-      utterance.lang = lang;
-
-      // Set voice if specified
-      if (voiceURI) {
-        const voice = availableVoices.find((v) => v.voiceURI === voiceURI);
-        if (voice) {
-          utterance.voice = voice;
-        }
-      }
-
-      utterance.onstart = () => {
-        setIsSpeaking(true);
-        setIsPaused(false);
-        onStart?.();
-      };
-
-      utterance.onend = () => {
-        setIsSpeaking(false);
-        setIsPaused(false);
-        utteranceRef.current = null;
-        onEnd?.();
-      };
-
-      utterance.onerror = (event) => {
-        setIsSpeaking(false);
-        setIsPaused(false);
-        utteranceRef.current = null;
-        onError?.(event.error);
-      };
-
-      utterance.onpause = () => {
-        setIsPaused(true);
-      };
-
-      utterance.onresume = () => {
-        setIsPaused(false);
-      };
-
-      utteranceRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
     },
-    [rate, pitch, volume, lang, availableVoices, onStart, onEnd, onError],
+    [
+      rate,
+      pitch,
+      volume,
+      lang,
+      availableVoices,
+      onStart,
+      onEnd,
+      onError,
+    ],
   );
 
   const pause = useCallback(() => {

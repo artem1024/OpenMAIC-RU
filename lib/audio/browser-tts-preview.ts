@@ -111,6 +111,8 @@ export function playBrowserTTSPreview(options: PlayBrowserTTSPreviewOptions): {
   // Gemini Aoede-озвучку (см. lib/playback/engine.ts и memory/feedback_tts_voice.md).
   // Превью в настройках ttsProviderId='browser-native-tts' должно сразу
   // отказать с осмысленным сообщением, а не выходить на synth.speak().
+  // Тело функции удалено; реализацию можно восстановить из git history
+  // (коммит 48be5f9 или ранее — искать SpeechSynthesisUtterance).
   void options;
   return {
     promise: Promise.reject(
@@ -120,113 +122,4 @@ export function playBrowserTTSPreview(options: PlayBrowserTTSPreviewOptions): {
     ),
     cancel: () => {},
   };
-
-  const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined;
-
-  if (!synth) {
-    return {
-      promise: Promise.reject(new Error('Browser does not support Speech Synthesis API')),
-      cancel: () => {},
-    };
-  }
-
-  let settled = false;
-  let started = false;
-  let canceled = false;
-  let timeoutId: number | null = null;
-  let rejectPromise: ((reason?: unknown) => void) | null = null;
-
-  const settleResolve = (resolve: () => void) => {
-    if (settled) return;
-    settled = true;
-    if (timeoutId !== null) {
-      window.clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-    resolve();
-  };
-
-  const settleReject = (reject: (reason?: unknown) => void, reason: unknown) => {
-    if (settled) return;
-    settled = true;
-    if (timeoutId !== null) {
-      window.clearTimeout(timeoutId);
-      timeoutId = null;
-    }
-    reject(reason);
-  };
-
-  const promise = new Promise<void>((resolve, reject) => {
-    rejectPromise = reject;
-
-    const startPlayback = async () => {
-      try {
-        const voices = options.voices ?? (await ensureVoicesLoaded());
-        if (canceled) {
-          settleReject(reject, createAbortError());
-          return;
-        }
-        if (voices.length === 0) {
-          settleReject(reject, new Error('No browser TTS voices available'));
-          return;
-        }
-
-        const utterance = new SpeechSynthesisUtterance(options.text);
-        utterance.rate = options.rate ?? 1;
-
-        const { voice, lang } = resolveBrowserVoice(voices, options.voice ?? '', options.text);
-        if (voice) {
-          utterance.voice = voice;
-        }
-        utterance.lang = lang;
-
-        utterance.onstart = () => {
-          started = true;
-        };
-
-        utterance.onend = () => {
-          if (!started) {
-            settleReject(reject, new Error('Browser TTS preview ended before playback started'));
-            return;
-          }
-          settleResolve(resolve);
-        };
-
-        utterance.onerror = (event) => {
-          if (canceled || event.error === 'canceled' || event.error === 'interrupted') {
-            settleReject(reject, createAbortError());
-            return;
-          }
-          settleReject(reject, new Error(event.error));
-        };
-
-        timeoutId = window.setTimeout(() => {
-          synth.cancel();
-          settleReject(reject, new Error('Browser TTS preview timed out'));
-        }, PREVIEW_TIMEOUT_MS);
-
-        synth.cancel();
-        if (canceled) {
-          settleReject(reject, createAbortError());
-          return;
-        }
-        synth.speak(utterance);
-      } catch (error) {
-        settleReject(reject, error);
-      }
-    };
-
-    void startPlayback();
-  });
-
-  const cancel = () => {
-    if (settled || canceled) return;
-    canceled = true;
-    synth.cancel();
-    if (rejectPromise) {
-      settleReject(rejectPromise, createAbortError());
-    }
-  };
-
-  return { promise, cancel };
 }
