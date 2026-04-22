@@ -48,9 +48,39 @@ export function SpotlightOverlay() {
     const targetEl = contentEl ?? domElement;
 
     const containerRect = containerRef.current.getBoundingClientRect();
-    const targetRect = targetEl.getBoundingClientRect();
+    let targetRect = targetEl.getBoundingClientRect();
 
     if (containerRect.width === 0 || containerRect.height === 0) {
+      setRect(null);
+      return;
+    }
+
+    // Fallback for buggy layouts: if the target sits (partially) outside the
+    // visible canvas, try to scroll it into view before measuring. The content
+    // layer in ScreenCanvas has `overflow-y: auto`, so this pulls offscreen
+    // elements into the viewport instead of dimming the whole slide with an
+    // invisible spotlight target.
+    const outsideV =
+      targetRect.bottom > containerRect.bottom + 2 ||
+      targetRect.top < containerRect.top - 2;
+    if (outsideV && typeof domElement.scrollIntoView === 'function') {
+      try {
+        domElement.scrollIntoView({ block: 'center', inline: 'nearest' });
+      } catch {
+        // ignore — older browsers may not accept the options object
+      }
+      targetRect = targetEl.getBoundingClientRect();
+    }
+
+    // If the target is still not even partially inside the visible canvas,
+    // skip the spotlight so the slide isn't left under a solid dim layer
+    // with nothing to look at.
+    const stillInvisible =
+      targetRect.bottom <= containerRect.top ||
+      targetRect.top >= containerRect.bottom ||
+      targetRect.right <= containerRect.left ||
+      targetRect.left >= containerRect.right;
+    if (stillInvisible) {
       setRect(null);
       return;
     }
