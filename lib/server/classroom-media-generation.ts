@@ -48,6 +48,31 @@ async function ensureDir(dir: string) {
 const DOWNLOAD_TIMEOUT_MS = 120_000; // 2 minutes
 const DOWNLOAD_MAX_SIZE = 100 * 1024 * 1024; // 100 MB
 
+const MEDIA_GEN_ATTEMPTS = 3;
+const MEDIA_GEN_BASE_DELAY_MS = 1500;
+
+async function withRetries<T>(
+  label: string,
+  fn: (attempt: number) => Promise<T>,
+  attempts = MEDIA_GEN_ATTEMPTS,
+  baseMs = MEDIA_GEN_BASE_DELAY_MS,
+): Promise<T> {
+  let lastErr: unknown;
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      return await fn(i);
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts) {
+        const delay = baseMs * Math.pow(2, i - 1);
+        log.warn(`${label} attempt ${i}/${attempts} failed, retrying in ${delay}ms: ${(err as Error)?.message || err}`);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 async function downloadToBuffer(url: string): Promise<Buffer> {
   const resp = await fetch(url, { signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS) });
   if (!resp.ok) throw new Error(`Download failed: ${resp.status} ${resp.statusText}`);
@@ -92,74 +117,77 @@ export async function generateMediaForClassroom(
 
   const generateImages = async () => {
     for (const req of imageRequests) {
+      const providerId = imageProviderIds[0] as ImageProviderId;
+      const apiKey = resolveImageApiKey(providerId);
+      if (!apiKey) {
+        log.warn(`No API key for image provider "${providerId}", skipping ${req.elementId}`);
+        continue;
+      }
+      const providerConfig = IMAGE_PROVIDERS[providerId];
+      const model = providerConfig?.models?.[0]?.id;
+
       try {
-        const providerId = imageProviderIds[0] as ImageProviderId;
-        const apiKey = resolveImageApiKey(providerId);
-        if (!apiKey) {
-          log.warn(`No API key for image provider "${providerId}", skipping ${req.elementId}`);
-          continue;
-        }
-        const providerConfig = IMAGE_PROVIDERS[providerId];
-        const model = providerConfig?.models?.[0]?.id;
+        await withRetries(`image ${req.elementId}`, async () => {
+          const result = await generateImage(
+            { providerId, apiKey, baseUrl: resolveImageBaseUrl(providerId), model },
+            { prompt: req.prompt, aspectRatio: req.aspectRatio || '16:9' },
+          );
 
-        const result = await generateImage(
-          { providerId, apiKey, baseUrl: resolveImageBaseUrl(providerId), model },
-          { prompt: req.prompt, aspectRatio: req.aspectRatio || '16:9' },
-        );
+          let buf: Buffer;
+          let ext: string;
+          if (result.base64) {
+            buf = Buffer.from(result.base64, 'base64');
+            ext = 'png';
+          } else if (result.url) {
+            buf = await downloadToBuffer(result.url);
+            const urlExt = path.extname(new URL(result.url).pathname).replace('.', '');
+            ext = ['png', 'jpg', 'jpeg', 'webp'].includes(urlExt) ? urlExt : 'png';
+          } else {
+            throw new Error('Image generation returned no data (neither base64 nor url)');
+          }
 
-        let buf: Buffer;
-        let ext: string;
-        if (result.base64) {
-          buf = Buffer.from(result.base64, 'base64');
-          ext = 'png';
-        } else if (result.url) {
-          buf = await downloadToBuffer(result.url);
-          const urlExt = path.extname(new URL(result.url).pathname).replace('.', '');
-          ext = ['png', 'jpg', 'jpeg', 'webp'].includes(urlExt) ? urlExt : 'png';
-        } else {
-          log.warn(`Image generation returned no data for ${req.elementId}`);
-          continue;
-        }
-
-        const filename = `${req.elementId}.${ext}`;
-        await fs.writeFile(path.join(mediaDir, filename), buf);
-        mediaMap[req.elementId] = mediaServingUrl(baseUrl, classroomId, `media/${filename}`);
-        log.info(`Generated image: ${filename}`);
+          const filename = `${req.elementId}.${ext}`;
+          await fs.writeFile(path.join(mediaDir, filename), buf);
+          mediaMap[req.elementId] = mediaServingUrl(baseUrl, classroomId, `media/${filename}`);
+          log.info(`Generated image: ${filename}`);
+        });
       } catch (err) {
-        log.warn(`Image generation failed for ${req.elementId}:`, err);
+        log.warn(`Image generation failed for ${req.elementId} after ${MEDIA_GEN_ATTEMPTS} attempts:`, err);
       }
     }
   };
 
   const generateVideos = async () => {
     for (const req of videoRequests) {
+      const providerId = videoProviderIds[0] as VideoProviderId;
+      const apiKey = resolveVideoApiKey(providerId);
+      if (!apiKey) {
+        log.warn(`No API key for video provider "${providerId}", skipping ${req.elementId}`);
+        continue;
+      }
+      const providerConfig = VIDEO_PROVIDERS[providerId];
+      const model = providerConfig?.models?.[0]?.id;
+
+      const normalized = normalizeVideoOptions(providerId, {
+        prompt: req.prompt,
+        aspectRatio: (req.aspectRatio as '16:9' | '4:3' | '1:1' | '9:16') || '16:9',
+      });
+
       try {
-        const providerId = videoProviderIds[0] as VideoProviderId;
-        const apiKey = resolveVideoApiKey(providerId);
-        if (!apiKey) {
-          log.warn(`No API key for video provider "${providerId}", skipping ${req.elementId}`);
-          continue;
-        }
-        const providerConfig = VIDEO_PROVIDERS[providerId];
-        const model = providerConfig?.models?.[0]?.id;
+        await withRetries(`video ${req.elementId}`, async () => {
+          const result = await generateVideo(
+            { providerId, apiKey, baseUrl: resolveVideoBaseUrl(providerId), model },
+            normalized,
+          );
 
-        const normalized = normalizeVideoOptions(providerId, {
-          prompt: req.prompt,
-          aspectRatio: (req.aspectRatio as '16:9' | '4:3' | '1:1' | '9:16') || '16:9',
+          const buf = await downloadToBuffer(result.url);
+          const filename = `${req.elementId}.mp4`;
+          await fs.writeFile(path.join(mediaDir, filename), buf);
+          mediaMap[req.elementId] = mediaServingUrl(baseUrl, classroomId, `media/${filename}`);
+          log.info(`Generated video: ${filename}`);
         });
-
-        const result = await generateVideo(
-          { providerId, apiKey, baseUrl: resolveVideoBaseUrl(providerId), model },
-          normalized,
-        );
-
-        const buf = await downloadToBuffer(result.url);
-        const filename = `${req.elementId}.mp4`;
-        await fs.writeFile(path.join(mediaDir, filename), buf);
-        mediaMap[req.elementId] = mediaServingUrl(baseUrl, classroomId, `media/${filename}`);
-        log.info(`Generated video: ${filename}`);
       } catch (err) {
-        log.warn(`Video generation failed for ${req.elementId}:`, err);
+        log.warn(`Video generation failed for ${req.elementId} after ${MEDIA_GEN_ATTEMPTS} attempts:`, err);
       }
     }
   };
@@ -196,6 +224,41 @@ export function replaceMediaPlaceholders(scenes: Scene[], mediaMap: Record<strin
       }
     }
   }
+}
+
+/**
+ * Remove image/video canvas elements whose `src` is still a `gen_img_*` / `gen_vid_*`
+ * placeholder after replacement — i.e. generation failed and no file was produced.
+ * Leaving the placeholder in the JSON causes the player to render a blank grey area
+ * with a broken-image icon. Dropping the element keeps the rest of the slide clean.
+ */
+export function removeUnresolvedMediaPlaceholders(scenes: Scene[]): number {
+  let removed = 0;
+  for (const scene of scenes) {
+    if (scene.type !== 'slide') continue;
+    const canvas = (
+      scene.content as {
+        canvas?: { elements?: Array<{ id: string; src?: string; type?: string }> };
+      }
+    )?.canvas;
+    if (!canvas?.elements) continue;
+    const before = canvas.elements.length;
+    canvas.elements = canvas.elements.filter((el) => {
+      if (
+        (el.type === 'image' || el.type === 'video') &&
+        typeof el.src === 'string' &&
+        isMediaPlaceholder(el.src)
+      ) {
+        log.warn(
+          `Removing unresolved ${el.type} element ${el.id} (src=${el.src}) from scene ${scene.id}`,
+        );
+        return false;
+      }
+      return true;
+    });
+    removed += before - canvas.elements.length;
+  }
+  return removed;
 }
 
 // ---------------------------------------------------------------------------

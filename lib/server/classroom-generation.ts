@@ -24,6 +24,7 @@ import { persistClassroom } from '@/lib/server/classroom-storage';
 import {
   generateMediaForClassroom,
   replaceMediaPlaceholders,
+  removeUnresolvedMediaPlaceholders,
   generateTTSForClassroom,
 } from '@/lib/server/classroom-media-generation';
 import type { UserRequirements } from '@/lib/types/generation';
@@ -378,7 +379,10 @@ export async function generateClassroom(
     try {
       const mediaMap = await generateMediaForClassroom(outlines, stageId, options.baseUrl);
       replaceMediaPlaceholders(scenes, mediaMap);
-      log.info(`Media generation complete: ${Object.keys(mediaMap).length} files`);
+      const removed = removeUnresolvedMediaPlaceholders(scenes);
+      log.info(
+        `Media generation complete: ${Object.keys(mediaMap).length} files${removed > 0 ? `, ${removed} unresolved placeholder(s) removed` : ''}`,
+      );
     } catch (err) {
       log.warn('Media generation phase failed, continuing:', err);
     }
