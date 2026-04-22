@@ -4,6 +4,7 @@ import { createSelectors } from '@/lib/utils/create-selectors';
 import type { ChatSession } from '@/lib/types/chat';
 import type { SceneOutline } from '@/lib/types/generation';
 import { createLogger } from '@/lib/logger';
+import { playerBridge } from '@/lib/player-bridge';
 
 const log = createLogger('StageStore');
 
@@ -182,6 +183,18 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
   setCurrentSceneId: (sceneId) => {
     set({ currentSceneId: sceneId });
     debouncedSave();
+    // Сообщаем родительскому окну (osvaivai) о смене сцены.
+    // No-op в standalone-режиме; см. lib/player-bridge.ts
+    if (sceneId && sceneId !== PENDING_SCENE_ID) {
+      const scenes = get().scenes;
+      const idx = scenes.findIndex((s) => s.id === sceneId);
+      if (idx >= 0) {
+        playerBridge.sceneChanged(idx, sceneId, scenes.length);
+        if (idx === scenes.length - 1) {
+          playerBridge.lessonEnded(scenes.length);
+        }
+      }
+    }
   },
 
   setChats: (chats) => {
