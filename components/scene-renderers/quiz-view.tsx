@@ -19,6 +19,7 @@ import { translate, type Locale } from '@/lib/i18n';
 import { getCurrentModelConfig } from '@/lib/utils/model-config';
 import { createLogger } from '@/lib/logger';
 import { playerBridge } from '@/lib/player-bridge';
+import { useStageStore } from '@/lib/store/stage';
 
 const log = createLogger('QuizView');
 import type { QuizQuestion } from '@/lib/types/stage';
@@ -786,11 +787,25 @@ export function QuizView({ questions, sceneId }: QuizViewProps) {
 
   // Когда quiz оценён — сообщаем родительскому окну (osvaivai) результат.
   // correct = число вопросов с status='correct', total = всего вопросов в quiz.
+  // Если этот quiz — последний слайд урока, дополнительно эмитим lesson:end:
+  // в stage.ts событие подавлено для quiz-сцен, чтобы оценочный промпт
+  // не вылетал до фактического прохождения теста. Бэк решит, считать ли урок
+  // пройденным (PROGRESS_QUIZ_PASS_RATIO).
   // No-op в standalone-режиме; см. lib/player-bridge.ts
   useEffect(() => {
     if (phase !== 'reviewing' || results.length === 0) return;
     const correctCount = results.filter((r) => r.status === 'correct').length;
     playerBridge.quizAnswered(sceneId, correctCount, results.length);
+    const { scenes } = useStageStore.getState();
+    const idx = scenes.findIndex((s) => s.id === sceneId);
+    if (idx >= 0 && idx === scenes.length - 1) {
+      playerBridge.lessonEnded({
+        totalScenes: scenes.length,
+        lastSceneType: 'quiz',
+        correct: correctCount,
+        total: results.length,
+      });
+    }
   }, [phase, results, sceneId]);
 
   const resultMap = useMemo(() => {

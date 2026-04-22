@@ -191,7 +191,12 @@ const useStageStoreBase = create<StageState>()((set, get) => ({
       if (idx >= 0) {
         playerBridge.sceneChanged(idx, sceneId, scenes.length);
         if (idx === scenes.length - 1) {
-          playerBridge.lessonEnded(scenes.length);
+          // Для quiz откладываем lesson:end до фазы reviewing — см. quiz-view.tsx,
+          // чтобы не показывать промпт оценки до фактического прохождения теста.
+          const lastSceneType = scenes[idx].type;
+          if (lastSceneType !== 'quiz') {
+            playerBridge.lessonEnded({ totalScenes: scenes.length, lastSceneType });
+          }
         }
       }
     }

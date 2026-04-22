@@ -41,7 +41,12 @@ export const playerBridge = {
     post('quiz:answer', { sceneId, correct, total });
   },
 
-  lessonEnded(totalScenes: number): void {
-    post('lesson:end', { totalScenes });
+  lessonEnded(payload: {
+    totalScenes: number;
+    lastSceneType?: string;
+    correct?: number;
+    total?: number;
+  }): void {
+    post('lesson:end', payload);
   },
 };
