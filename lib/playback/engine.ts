@@ -163,14 +163,21 @@ export class PlaybackEngine {
       this.setMode('paused');
       // Freeze TTS — but skip if waiting on ProactiveCard (no active speech)
       if (!this.currentTrigger) {
+        // [osvaivai:no-browser-tts] DO NOT RE-ENABLE — 2026-04-21
+        // Ветка browserTTSActive удалена: браузерный Web Speech API в форке
+        // запрещён (см. playBrowserTTS / playBrowserTTSChunk). Оставлена только
+        // пауза обычного аудио-плеера (Gemini TTS через <audio>). На всякий
+        // случай дёргаем speechSynthesis.cancel(), если какая-то утечка
+        // состояния привела к фоновой речи браузера.
         if (this.browserTTSActive) {
-          // Cancel+re-speak pattern: save remaining chunks for resume.
-          // speechSynthesis.pause()/resume() is broken on Firefox, so we
-          // cancel now and re-speak from current chunk onward on resume.
-          this.browserTTSPausedChunks = this.browserTTSChunks.slice(this.browserTTSChunkIndex);
-          window.speechSynthesis?.cancel();
-          // Note: cancel fires onerror('canceled'), which we ignore (see playBrowserTTSChunk)
-        } else if (this.audioPlayer.isPlaying()) {
+          log.warn('[osvaivai] unexpected browserTTSActive on pause — cancelling and resetting');
+          this.browserTTSActive = false;
+          this.browserTTSChunks = [];
+          this.browserTTSChunkIndex = 0;
+          this.browserTTSPausedChunks = [];
+          if (typeof window !== 'undefined') window.speechSynthesis?.cancel();
+        }
+        if (this.audioPlayer.isPlaying()) {
           this.audioPlayer.pause();
         }
       }
@@ -200,14 +207,18 @@ export class PlaybackEngine {
     } else {
       // Resume lecture
       this.setMode('playing');
+      // [osvaivai:no-browser-tts] DO NOT RE-ENABLE — 2026-04-21
+      // Ветка re-speak через browserTTSPausedChunks удалена: именно она
+      // приводила к смене женского Gemini-голоса на мужскую браузерную кашу
+      // после паузы на 5-м уроке, слайд 7. Браузерный TTS в этом форке запрещён,
+      // см. playBrowserTTS() и playBrowserTTSChunk(). Если pausedChunks всё-таки
+      // оказались непустыми (теоретически невозможно, т.к. pause() тоже
+      // нейтрализован), просто сбрасываем их и идём по обычному пути.
       if (this.browserTTSPausedChunks.length > 0) {
-        // Browser TTS was paused via cancel — re-speak remaining chunks
-        this.browserTTSActive = true;
-        this.browserTTSChunks = this.browserTTSPausedChunks;
-        this.browserTTSChunkIndex = 0;
+        log.warn('[osvaivai] discarding leaked browserTTSPausedChunks on resume');
         this.browserTTSPausedChunks = [];
-        this.playBrowserTTSChunk();
-      } else if (this.audioPlayer.hasActiveAudio()) {
+      }
+      if (this.audioPlayer.hasActiveAudio()) {
         // Audio is paused — resume it; TTS onend will call processNext
         this.audioPlayer.resume();
       } else if (this.speechTimerRemaining > 0) {
@@ -609,6 +620,23 @@ export class PlaybackEngine {
 
   /** Speak the current chunk; on completion, advance to next or finish. */
   private async playBrowserTTSChunk(): Promise<void> {
+    // [osvaivai:no-browser-tts] DO NOT RE-ENABLE — 2026-04-21
+    // Вторая линия защиты после playBrowserTTS(). Даже если кто-то (pause/resume,
+    // восстановление состояния, апстрим-мердж) вызовет playBrowserTTSChunk
+    // напрямую с непустыми chunks, мы не должны выйти на window.speechSynthesis.speak().
+    // Для русского браузерный Web Speech API (Yandex/Google TTS через ОС) звучит
+    // как мужская каша с бульканием и перебивает нормальную Gemini Aoede-озвучку.
+    // Короткое замыкание: сбрасываем состояние, эмулируем конец речи, даём движку
+    // перейти к следующему действию.
+    log.warn('[osvaivai] playBrowserTTSChunk blocked — browser TTS is disabled in this fork');
+    this.browserTTSActive = false;
+    this.browserTTSChunks = [];
+    this.browserTTSChunkIndex = 0;
+    this.browserTTSPausedChunks = [];
+    this.callbacks.onSpeechEnd?.();
+    if (this.mode === 'playing') this.processNext();
+    return;
+
     if (this.browserTTSChunkIndex >= this.browserTTSChunks.length) {
       // All chunks done
       this.browserTTSActive = false;

@@ -61,6 +61,17 @@ export function useBrowserTTS(options: UseBrowserTTSOptions = {}) {
 
   const speak = useCallback(
     (text: string, voiceURI?: string) => {
+      // [osvaivai:no-browser-tts] DO NOT RE-ENABLE — 2026-04-21
+      // Браузерный Web Speech API заблокирован в этом форке: для русского
+      // языка звук неразборчив и приводил к подмене женского Gemini-голоса
+      // мужской «кашей» при паузе/возобновлении. Хук оставлен как dead code,
+      // чтобы не ломать импорты, если он где-то окажется. Любой вызов speak()
+      // тихо уходит в onError.
+      void text;
+      void voiceURI;
+      onError?.('Browser-native TTS disabled in this build');
+      return;
+
       if (typeof window === 'undefined' || !window.speechSynthesis) {
         onError?.('Browser does not support Web Speech API');
         return;

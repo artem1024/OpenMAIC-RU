@@ -105,6 +105,22 @@ export function playBrowserTTSPreview(options: PlayBrowserTTSPreviewOptions): {
   promise: Promise<void>;
   cancel: () => void;
 } {
+  // [osvaivai:no-browser-tts] DO NOT RE-ENABLE — 2026-04-21
+  // Браузерный Web Speech API в этом форке запрещён: для русского языка
+  // звучит как неразборчивая мужская каша и исторически перебивал нормальную
+  // Gemini Aoede-озвучку (см. lib/playback/engine.ts и memory/feedback_tts_voice.md).
+  // Превью в настройках ttsProviderId='browser-native-tts' должно сразу
+  // отказать с осмысленным сообщением, а не выходить на synth.speak().
+  void options;
+  return {
+    promise: Promise.reject(
+      new Error(
+        'Browser-native TTS disabled in this build — use Gemini TTS (provider "gemini-tts") instead',
+      ),
+    ),
+    cancel: () => {},
+  };
+
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined;
 
   if (!synth) {
