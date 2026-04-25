@@ -282,18 +282,66 @@ function clampOffscreen(
     changed += 1 + childrenOf.get(cont.id)!.length + satellites.length;
   }
 
-  // Phase 2: per-element clamp for anything not yet moved.
+  // Phase 2: per-element clamp for anything not yet moved. Move-up is preferred,
+  // but if it would stack the element on top of a neighbour that shares its
+  // horizontal band, shrink the element to fit in the space below that neighbour
+  // instead. Avoids the "card slid up over existing text" artefact.
+  const hOverlaps = (a: AnyElement, b: AnyElement): boolean => {
+    return left(a) < right(b) && left(b) < right(a);
+  };
+
   for (const e of elements) {
     if (moved.has(e)) continue;
     if (e.height === undefined || e.top === undefined) continue;
-    if (bottom(e) > vpH + 1) {
-      const newTop = Math.max(0, vpH - h(e) - MARGIN);
-      if (newTop !== top(e)) {
-        report.push(`clamp ${e.id}: top ${top(e)}→${newTop} (h=${h(e)})`);
-        e.top = newTop;
-        changed += 1;
+    if (bottom(e) <= vpH + 1) continue;
+
+    const proposedTop = Math.max(0, vpH - h(e) - MARGIN);
+    let collides = false;
+    for (const o of elements) {
+      if (o === e) continue;
+      if (o.height === undefined || o.top === undefined) continue;
+      if (top(o) + h(o) <= proposedTop || top(o) >= proposedTop + h(e)) continue;
+      if (hOverlaps(e, o)) {
+        collides = true;
+        break;
       }
     }
+
+    if (!collides) {
+      if (proposedTop !== top(e)) {
+        report.push(`clamp ${e.id}: top ${top(e)}→${proposedTop} (h=${h(e)})`);
+        e.top = proposedTop;
+        changed += 1;
+      }
+      continue;
+    }
+
+    // Find lowest "floor" among elements that horizontally overlap e and
+    // already fit onscreen. Place e below that floor; shrink to fit.
+    let floor = 0;
+    for (const o of elements) {
+      if (o === e) continue;
+      if (o.height === undefined || o.top === undefined) continue;
+      if (!hOverlaps(e, o)) continue;
+      const oBot = top(o) + h(o);
+      if (oBot <= vpH - MARGIN && oBot > floor) floor = oBot;
+    }
+    const newTop = Math.max(0, floor + 8);
+    const newH = vpH - newTop - MARGIN;
+    if (newH < 30) {
+      // No space to shrink — fall back to move-up and accept overlap.
+      e.top = proposedTop;
+      report.push(
+        `clamp ${e.id}: top ${top(e)}→${proposedTop} (h=${h(e)}, forced — overlap unavoidable)`,
+      );
+    } else {
+      report.push(
+        `shrink ${e.id}: top ${top(e)}→${newTop}, h ${h(e)}→${newH} (overlap avoided)`,
+      );
+      e.top = newTop;
+      e.height = newH;
+    }
+    changed += 1;
   }
   return changed;
 }
