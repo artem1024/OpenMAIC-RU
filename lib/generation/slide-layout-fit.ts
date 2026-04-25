@@ -135,25 +135,71 @@ interface Card {
   right: number;
 }
 
+type OwnerMatch = { owner: PPTShapeElement; tightness: number; via: 'bbox' | 'align' };
+
+function findBboxOwner(el: Sized, shapes: PPTShapeElement[]): OwnerMatch | null {
+  let best: OwnerMatch | null = null;
+  for (const s of shapes) {
+    if (s.id === el.id) continue;
+    if (!bboxContains(s, el)) continue;
+    const area = s.width * s.height;
+    if (!best || area < best.tightness) best = { owner: s, tightness: area, via: 'bbox' };
+  }
+  return best;
+}
+
+// Alignment-based ownership: the AI sometimes generates a text whose
+// rendered height exceeds the bg shape (e.g. text height=86 inside a card
+// shape height=60). bbox-containment fails, so the text becomes an orphan
+// and the bg shape never grows. Alignment recovers these cases by treating
+// a non-shape element as a member if it is left/top-aligned with a real
+// card bg and horizontally fits inside it.
+function findAlignmentOwner(el: Sized, shapes: PPTShapeElement[]): OwnerMatch | null {
+  // Alignment owner only for non-shape (text/latex/image). Allowing shapes
+  // here risks shape↔shape alignment cycles for nested or overlapping frames.
+  if (isShape(el)) return null;
+
+  let best: OwnerMatch | null = null;
+  for (const bg of shapes) {
+    if (bg.id === el.id) continue;
+    // Skinny stripes / decorative thin bars cannot host members.
+    if (bg.width < 80 || bg.height < 30) continue;
+    // Tiny decorative elements should stay singletons.
+    if (el.width < 20 || el.height < 20) continue;
+    // Member must occupy a meaningful share of bg width.
+    if (el.width < bg.width * 0.3) continue;
+
+    const topAligned = Math.abs(el.top - bg.top) <= 10;
+    const leftAligned = el.left >= bg.left - 2 && el.left <= bg.left + bg.width * 0.3;
+    const xOverlap =
+      Math.min(el.left + el.width, bg.left + bg.width) - Math.max(el.left, bg.left);
+    const xOverlapPct = xOverlap / Math.min(el.width, bg.width);
+    if (!(topAligned && leftAligned && xOverlapPct >= 0.7)) continue;
+
+    const area = bg.width * bg.height;
+    if (!best || area < best.tightness) best = { owner: bg, tightness: area, via: 'align' };
+  }
+  return best;
+}
+
 function buildCards(elements: Sized[]): Card[] {
   const shapes = elements.filter(isShape);
-  // For each non-shape, find the smallest shape containing it.
-  // For each shape, find the smallest *other* shape containing it (a card bg
-  // can itself be inside a larger decorative frame — we want the inner one).
+  // For each element, find an owner shape via bbox-containment OR
+  // top/left-alignment. Both candidates compete: alignment wins when its
+  // owner area is within 1.2× of the bbox owner (tighter or just slightly
+  // larger), so an inner card beats an outer decorative frame even if the
+  // text vertically overflows the inner card.
   const ownerByEl = new Map<string, PPTShapeElement>();
   for (const el of elements) {
-    let bestOwner: PPTShapeElement | null = null;
-    let bestArea = Infinity;
-    for (const s of shapes) {
-      if (s.id === el.id) continue;
-      if (!bboxContains(s, el)) continue;
-      const area = s.width * s.height;
-      if (area < bestArea) {
-        bestArea = area;
-        bestOwner = s;
-      }
+    const bbox = findBboxOwner(el, shapes);
+    const align = findAlignmentOwner(el, shapes);
+    let chosen: OwnerMatch | null = null;
+    if (bbox && align) {
+      chosen = align.tightness <= bbox.tightness * 1.2 ? align : bbox;
+    } else {
+      chosen = align ?? bbox ?? null;
     }
-    if (bestOwner) ownerByEl.set(el.id, bestOwner);
+    if (chosen) ownerByEl.set(el.id, chosen.owner);
   }
 
   const cardByBgId = new Map<string, Card>();
@@ -361,6 +407,15 @@ export function fitSlideLayout(
 
   const cards = buildCards(sized);
 
+  // Snapshot card tops BEFORE any grow/shift/squeeze. Step 6 only drops a
+  // card if it was below the viewport originally AND remained below after
+  // all rescue steps; otherwise a card that legitimately rode down because
+  // its sibling grew would be silently destroyed.
+  const originalTops = new Map<string, number>();
+  for (const c of cards) {
+    originalTops.set(c.bg?.id ?? c.members[0].id, c.top);
+  }
+
   // Step 1+2: fit each card individually (measure texts, grow shape).
   for (const c of cards) {
     fitCard(c);
@@ -428,7 +483,9 @@ export function fitSlideLayout(
   const dropIds = new Set<string>();
   let droppedCount = 0;
   for (const c of cards) {
-    if (c.top >= dropBound) {
+    const key = c.bg?.id ?? c.members[0].id;
+    const originalTop = originalTops.get(key) ?? c.top;
+    if (originalTop >= dropBound && c.top >= dropBound) {
       for (const m of c.members) dropIds.add(m.id);
       droppedCount++;
     }

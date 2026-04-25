@@ -324,4 +324,97 @@ describe('fitSlideLayout', () => {
     expect(elements).toHaveLength(1);
     expect(warnings).toEqual([]);
   });
+
+  // Regression: L5.S8 «Градиентный спуск» — three cards with a 60px-tall
+  // shape and an 86px-tall text. Text vertically overflows the shape, so
+  // pre-B1 bbox containment failed and the text became an orphan; the shape
+  // never grew, and texts visually leaked into the next card. With B1's
+  // alignment-based ownership, each text is a member of its shape, the
+  // shape grows, and subsequent cards shift down without overlap.
+  test('B1 cascade: over-tall text becomes shape member via alignment', () => {
+    const longContent =
+      '<p style="font-size: 18px;">Метод оптимизации, который использует градиент для пошагового движения к минимуму функции потерь — основа обучения нейросетей.</p>';
+    const els: PPTElement[] = [
+      shape('card1', 60, 50, 880, 60, '#e8f7f8'),
+      text('text1', 80, 60, 840, 86, longContent),
+      shape('card2', 60, 130, 880, 60, '#e8f7f8'),
+      text('text2', 80, 140, 840, 86, longContent),
+      shape('card3', 60, 210, 880, 60, '#e8f7f8'),
+      text('text3', 80, 220, 840, 86, longContent),
+    ];
+    const { elements } = fitSlideLayout(els, CANVAS);
+    const card1 = elements.find((e) => e.id === 'card1') as PPTShapeElement;
+    const card2 = elements.find((e) => e.id === 'card2') as PPTShapeElement;
+    const card3 = elements.find((e) => e.id === 'card3') as PPTShapeElement;
+    const text1 = elements.find((e) => e.id === 'text1') as PPTTextElement;
+    const text3 = elements.find((e) => e.id === 'text3') as PPTTextElement;
+
+    // All three shapes grew to wrap their text members.
+    expect(card1.height).toBeGreaterThan(60);
+    expect(card2.height).toBeGreaterThan(60);
+    expect(card3.height).toBeGreaterThan(60);
+
+    // Cards shifted down so no overlap between consecutive cards.
+    expect(card2.top).toBeGreaterThanOrEqual(card1.top + card1.height);
+    expect(card3.top).toBeGreaterThanOrEqual(card2.top + card2.height);
+
+    // Texts moved with their shapes (lockstep).
+    expect(text1.top).toBeGreaterThanOrEqual(card1.top);
+    expect(text3.top).toBeGreaterThanOrEqual(card3.top);
+
+    // Nothing was dropped — all six elements remain.
+    expect(elements).toHaveLength(6);
+  });
+
+  // Regression: accent-stripe pattern. A 5px-wide colored stripe sits at the
+  // exact (left, top) of a card bg of the same height. With B1's alignment
+  // path, isShape(stripe) → null, so the stripe is matched to the bg via
+  // bbox only, becoming a true card member that grows in lockstep.
+  test('B1 accent stripe: over-tall text grows bg, skinny stripe locks via bbox', () => {
+    const els: PPTElement[] = [
+      shape('bg', 60, 200, 450, 60, '#ffffff'),
+      shape('stripe', 60, 200, 5, 60, '#00b7c2'),
+      text(
+        'desc',
+        80,
+        207,
+        420,
+        86,
+        '<p style="font-size: 18px;">Развитие архитектур: от перцептрона Розенблатта через CNN и RNN к современным трансформерам ChatGPT.</p>',
+      ),
+    ];
+    const { elements } = fitSlideLayout(els, CANVAS);
+    const bg = elements.find((e) => e.id === 'bg') as PPTShapeElement;
+    const stripe = elements.find((e) => e.id === 'stripe') as PPTShapeElement;
+
+    expect(bg.height).toBeGreaterThan(60);
+    expect(stripe.height).toBe(bg.height);
+    expect(stripe.top).toBe(bg.top);
+  });
+
+  // Regression: a slim underline shape (height=3) sitting just below a title
+  // text must NOT become a member of the title and must NOT be claimed by
+  // any other element. Pre-B1 bbox-only logic already kept it singleton;
+  // the test guards against alignment guards being relaxed accidentally.
+  test('B1 title-underline: slim shape stays singleton, never coupled to title', () => {
+    const els: PPTElement[] = [
+      text(
+        'title',
+        60,
+        10,
+        880,
+        80,
+        '<p style="font-size: 32px;"><strong>История нейросетей</strong></p>',
+      ),
+      shape('underline', 60, 88, 880, 3, '#00b7c2'),
+    ];
+    const { elements } = fitSlideLayout(els, CANVAS);
+    const underline = elements.find((e) => e.id === 'underline') as PPTShapeElement;
+
+    // Underline keeps its decorative height — never grew with title content.
+    expect(underline.height).toBe(3);
+    // Underline keeps its original left/width — wasn't pulled into a card.
+    expect(underline.left).toBe(60);
+    expect(underline.width).toBe(880);
+  });
 });
