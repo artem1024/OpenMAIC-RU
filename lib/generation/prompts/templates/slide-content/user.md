@@ -1,5 +1,7 @@
 # Generation Requirements
 
+{{layoutHint}}
+
 ## Scene Information
 
 - **Title**: {{title}}

@@ -54,10 +54,29 @@ const SAFE_BOTTOM_MARGIN = 5;
 // Tolerance for bbox containment / overlap checks (handles AI off-by-1).
 const BBOX_TOL = 3;
 
-interface FitResult {
+export interface FitMetrics {
+  /** Max element bottom over canvas.height, 0 when slide fits. */
+  residualOverflowPx: number;
+  /** Max (required - height) across text elements, 0 when nothing clipped. */
+  residualClippedPx: number;
+  /** IDs that Step 6 dropped because they sat entirely below the viewport. */
+  droppedElementIds: string[];
+  /** IDs whose bottom still exceeds canvas.height after the full pipeline. */
+  overflowElementIds: string[];
+}
+
+export interface FitResult {
   elements: PPTElement[];
   warnings: string[];
+  metrics: FitMetrics;
 }
+
+const EMPTY_METRICS: FitMetrics = {
+  residualOverflowPx: 0,
+  residualClippedPx: 0,
+  droppedElementIds: [],
+  overflowElementIds: [],
+};
 
 /** Strip HTML tags but preserve paragraph boundaries as `\n`. */
 function stripHtml(html: string): string[] {
@@ -388,7 +407,9 @@ export function fitSlideLayout(
   canvas: { width: number; height: number },
 ): FitResult {
   const warnings: string[] = [];
-  if (!elements || elements.length === 0) return { elements: elements ?? [], warnings };
+  if (!elements || elements.length === 0) {
+    return { elements: elements ?? [], warnings, metrics: { ...EMPTY_METRICS } };
+  }
 
   // Work on shallow copies — caller treats result as new state.
   let cloned: PPTElement[] = elements.map((e) => ({ ...e }));
@@ -510,13 +531,30 @@ export function fitSlideLayout(
     e.height = Math.round(e.height);
   }
 
-  // Step 7: final warn — residual overflow after pull-up + squeeze + drop.
+  // Step 7: compute metrics + final warn. residualOverflow uses maxBottom over
+  // canvas.height; residualClipped uses required-vs-height per text element;
+  // overflowElementIds collects every element whose bottom still exceeds the
+  // canvas (Б5 retry trigger upstream of warning).
   let maxBottom = 0;
+  let residualClippedPx = 0;
+  const overflowElementIds: string[] = [];
   for (const e of finalElements) {
     if (!hasHeight(e)) continue;
     const b = e.top + e.height;
     if (b > maxBottom) maxBottom = b;
+    if (b > canvas.height + BBOX_TOL) overflowElementIds.push(e.id);
+    if (isText(e)) {
+      const required = measureTextHeight(e.content, e.width);
+      const clipped = Math.max(0, required - e.height);
+      if (clipped > residualClippedPx) residualClippedPx = clipped;
+    }
   }
+  const metrics: FitMetrics = {
+    residualOverflowPx: Math.max(0, maxBottom - canvas.height),
+    residualClippedPx,
+    droppedElementIds: Array.from(dropIds),
+    overflowElementIds,
+  };
   if (maxBottom > canvas.height + BBOX_TOL) {
     warnings.push(
       `slide-layout-fit: residual overflow — max element bottom ${maxBottom.toFixed(
@@ -525,5 +563,5 @@ export function fitSlideLayout(
     );
   }
 
-  return { elements: finalElements, warnings };
+  return { elements: finalElements, warnings, metrics };
 }

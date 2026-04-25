@@ -457,6 +457,19 @@ function processLatexElements(
 }
 
 /**
+ * Per-call options for generateSlideContent. Currently used by Б5 retry
+ * to inject a `layoutHint` into the prompt and gate against infinite loops.
+ */
+interface GenerateSlideOptions {
+  retryAttempt?: number;
+  layoutHint?: string;
+}
+
+/** Б5 retry triggers — anything beyond ~20 px or a dropped element. */
+const LAYOUT_RETRY_OVERFLOW_PX = 20;
+const LAYOUT_RETRY_CLIP_PX = 20;
+
+/**
  * Generate slide content
  */
 async function generateSlideContent(
@@ -467,6 +480,7 @@ async function generateSlideContent(
   visionEnabled?: boolean,
   generatedMediaMapping?: ImageMapping,
   agents?: AgentInfo[],
+  options?: GenerateSlideOptions,
 ): Promise<GeneratedSlideContent | null> {
   const lang = outline.language || 'zh-CN';
 
@@ -545,6 +559,7 @@ async function generateSlideContent(
     canvas_width: canvasWidth,
     canvas_height: canvasHeight,
     teacherContext,
+    layoutHint: options?.layoutHint ?? '',
   });
 
   if (!prompts) {
@@ -613,6 +628,33 @@ async function generateSlideContent(
   for (const w of fit.warnings) {
     log.warn(`[${outline.title}] ${w}`);
   }
+
+  // Б5 retry: if the slide still has notable residual overflow, internal
+  // clipping, or dropped elements after fit, ask the LLM to regenerate with
+  // a layout hint that points at the failure mode. One retry max.
+  const attempt = options?.retryAttempt ?? 0;
+  const needsRetry =
+    fit.metrics.residualOverflowPx > LAYOUT_RETRY_OVERFLOW_PX ||
+    fit.metrics.residualClippedPx > LAYOUT_RETRY_CLIP_PX ||
+    fit.metrics.droppedElementIds.length > 0;
+  if (needsRetry && attempt < 1) {
+    const hint =
+      `Previous layout attempt failed: residualOverflow=${fit.metrics.residualOverflowPx}px, ` +
+      `clipped=${fit.metrics.residualClippedPx}px, dropped=${fit.metrics.droppedElementIds.length}. ` +
+      `Reduce content density.`;
+    log.warn(`[${outline.title}] retrying slide generation: ${hint}`);
+    return generateSlideContent(
+      outline,
+      aiCall,
+      assignedImages,
+      imageMapping,
+      visionEnabled,
+      generatedMediaMapping,
+      agents,
+      { retryAttempt: attempt + 1, layoutHint: hint },
+    );
+  }
+
   const fittedElements = fit.elements;
 
   // Process background

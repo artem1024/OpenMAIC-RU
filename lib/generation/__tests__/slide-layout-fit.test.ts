@@ -417,4 +417,34 @@ describe('fitSlideLayout', () => {
     expect(underline.left).toBe(60);
     expect(underline.width).toBe(880);
   });
+
+  test('Б5 metrics — fitting slide returns zeroed metrics', () => {
+    const els: PPTElement[] = [
+      shape('bg', 60, 60, 880, 100),
+      text(
+        'title',
+        80,
+        80,
+        840,
+        40,
+        '<p style="font-size: 24px;">Заголовок</p>',
+      ),
+    ];
+    const result = fitSlideLayout(els, CANVAS);
+    expect(result.metrics).toBeDefined();
+    expect(result.metrics.residualOverflowPx).toBe(0);
+    expect(result.metrics.residualClippedPx).toBe(0);
+    expect(result.metrics.droppedElementIds).toEqual([]);
+    expect(result.metrics.overflowElementIds).toEqual([]);
+  });
+
+  test('Б5 metrics — empty input returns zeroed metrics', () => {
+    const result = fitSlideLayout([], CANVAS);
+    expect(result.elements).toEqual([]);
+    expect(result.warnings).toEqual([]);
+    expect(result.metrics.residualOverflowPx).toBe(0);
+    expect(result.metrics.residualClippedPx).toBe(0);
+    expect(result.metrics.droppedElementIds).toEqual([]);
+    expect(result.metrics.overflowElementIds).toEqual([]);
+  });
 });
