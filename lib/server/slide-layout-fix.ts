@@ -34,6 +34,11 @@ const TITLE_HEIGHT = 32;
 const TITLE_PAD = 8;
 const TITLE_PAT = /<strong>[^<]{2,60}:<\/strong>/i;
 const STRIP_TAGS = /<[^>]+>/g;
+// Block-level tags that introduce a visual line break when rendered.
+// Inline tags (<strong>, <em>, <span>, ...) must NOT translate to a newline:
+// "<p>• <strong>Цель:</strong> текст</p>" is one line, not three.
+const BLOCK_TAG_RE = /<br\s*\/?>|<\/?(p|div|li|ul|ol|h[1-6]|blockquote)(\s[^>]*)?>/gi;
+const INLINE_TAG_RE = /<[^>]+>/g;
 
 function num(v: unknown, fallback = 0): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
@@ -138,9 +143,10 @@ function titleAtBottomSwap(
   return changed;
 }
 
-function estimateTextHeight(contentHtml: string, widthPx: number): number {
+export function estimateTextHeight(contentHtml: string, widthPx: number): number {
   const plain = (contentHtml || '')
-    .replace(STRIP_TAGS, '\n')
+    .replace(BLOCK_TAG_RE, '\n')
+    .replace(INLINE_TAG_RE, '')
     .replace(/\n\s*\n+/g, '\n\n')
     .trim();
   if (!plain) return 0;
