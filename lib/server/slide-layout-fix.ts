@@ -171,6 +171,94 @@ export function estimateTextHeight(contentHtml: string, widthPx: number): number
   return Math.floor(lines * lineH) + 8;
 }
 
+function shrinkFontSizes(content: string, deltaPx: number): string {
+  return content.replace(
+    /font-size\s*:\s*(\d+(?:\.\d+)?)\s*px/gi,
+    (_m, raw) => `font-size: ${Math.max(12, Number(raw) - deltaPx)}px`,
+  );
+}
+
+/**
+ * Safe auto-shrink for text elements clipped inside their box or overflowing
+ * the viewport. Reduces every explicit `font-size: Npx` on the element by a
+ * small delta until the estimated height fits the existing height — but
+ * NEVER grows the bbox. If shrinking can't fit the content without growing
+ * the box, the element is left alone with a `skip-shrink` warning so it can
+ * be picked up by retry/reflow rather than turned into a giant box that
+ * collides with neighbours.
+ */
+function autoShrinkTexts(
+  elements: AnyElement[],
+  vpH: number,
+  report: string[],
+): number {
+  let changed = 0;
+  for (const e of elements) {
+    if (e.type !== 'text') continue;
+    const content = (e.content as string) || '';
+    const widthPx = w(e) || 240;
+    const heightPx = h(e);
+    const required = estimateTextHeight(content, widthPx);
+    const overflowsBox = required > heightPx + 2;
+    const overflowsViewport = top(e) + heightPx > vpH;
+    if (!overflowsBox && !overflowsViewport) continue;
+
+    if (heightPx > 0 && required > heightPx * 3) {
+      report.push(
+        `skip-shrink ${e.id}: suspicious required=${required} (box=${heightPx})`,
+      );
+      continue;
+    }
+
+    const sizes = Array.from(
+      content.matchAll(/font-size\s*:\s*(\d+(?:\.\d+)?)\s*px/gi),
+    ).map((m) => Number(m[1]));
+    if (!sizes.length || sizes.every((fs) => fs <= 12)) {
+      report.push(`skip-shrink ${e.id}: no shrinkable explicit font-size`);
+      continue;
+    }
+
+    let bestContent = content;
+    let bestRequired = required;
+    let bestDelta = 0;
+    for (const delta of [2, 4, 6]) {
+      const candidate = shrinkFontSizes(content, delta);
+      const candidateRequired = estimateTextHeight(candidate, widthPx);
+      if (candidateRequired < bestRequired) {
+        bestContent = candidate;
+        bestRequired = candidateRequired;
+        bestDelta = delta;
+      }
+      if (candidateRequired <= heightPx + 2) break;
+    }
+
+    if (!bestDelta || bestRequired > heightPx + 2) {
+      report.push(
+        `skip-shrink ${e.id}: cannot fit without growing box (req ${required}→${bestRequired}, box=${heightPx})`,
+      );
+      continue;
+    }
+
+    let nextHeight = heightPx;
+    if (overflowsViewport) {
+      nextHeight = Math.min(heightPx, Math.ceil(bestRequired));
+      if (top(e) + nextHeight > vpH + 2) {
+        report.push(
+          `skip-shrink ${e.id}: still offscreen after shrink (bottom=${top(e) + nextHeight}, vpH=${vpH})`,
+        );
+        continue;
+      }
+    }
+    e.content = bestContent;
+    e.height = nextHeight;
+    report.push(
+      `shrink ${e.id}: delta=${bestDelta}px, h ${heightPx}→${nextHeight}, req ${required}→${bestRequired}`,
+    );
+    changed += 1;
+  }
+  return changed;
+}
+
 function growTextHeight(
   elements: AnyElement[],
   vpH: number,
@@ -379,6 +467,7 @@ export function fixSlideLayouts(scenes: Scene[]): LayoutFixReport[] {
     changes += titleAtBottomSwap(canvas.elements, messages);
     changes += growTextHeight(canvas.elements, vpH, messages);
     changes += clampOffscreen(canvas.elements, vpH, messages);
+    changes += autoShrinkTexts(canvas.elements, vpH, messages);
     if (changes > 0) {
       reports.push({
         sceneIndex: idx,

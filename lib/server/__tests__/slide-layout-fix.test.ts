@@ -15,7 +15,60 @@
  * tags which are stripped without inserting a newline.
  */
 import { describe, test, expect } from 'vitest';
-import { estimateTextHeight } from '../slide-layout-fix';
+import type { Scene } from '@/lib/types/stage';
+import { estimateTextHeight, fixSlideLayouts } from '../slide-layout-fix';
+
+type CanvasElement = {
+  id: string;
+  type: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  content?: string;
+  path?: string;
+};
+
+function makeSceneWithElements(elements: CanvasElement[]): Scene {
+  return {
+    id: 's-test',
+    title: 'test',
+    type: 'slide',
+    content: {
+      type: 'slide',
+      canvas: {
+        viewportSize: 1000,
+        viewportRatio: 0.5625,
+        elements,
+      },
+    },
+  } as unknown as Scene;
+}
+
+/**
+ * Wrap a text element in a tight container shape so that growTextHeight is
+ * bounded — required for autoShrink integration tests, since otherwise the
+ * grow pass swallows any internal clip before shrink can run.
+ *
+ * `padBottom` controls how much room the container leaves below the text;
+ * tighter pad ⇒ smaller post-grow height. Container width/height are
+ * clamped to `findContainers`' minimums (>=120w, >=80h, path "M 0 0 ...").
+ */
+function withTightContainer(
+  text: CanvasElement,
+  padBottom = 30,
+): CanvasElement[] {
+  const container: CanvasElement = {
+    id: 'container_' + text.id,
+    type: 'shape',
+    left: text.left - 10,
+    top: text.top - 10,
+    width: Math.max(120, text.width + 20),
+    height: Math.max(80, text.height + padBottom + 10),
+    path: 'M 0 0 L 1 0 L 1 1 L 0 1 Z',
+  };
+  return [container, text];
+}
 
 describe('estimateTextHeight (Б2a)', () => {
   test('plain <p> text — single short line at 18px in 400px width', () => {
@@ -120,5 +173,140 @@ describe('estimateTextHeight (Б2a)', () => {
     expect(list).toBeGreaterThan(para);
     expect(heading).toBeGreaterThan(para);
     expect(quote).toBeGreaterThan(para);
+  });
+});
+
+describe('autoShrinkTexts (Б2b)', () => {
+  test('clipped text gets font shrunk; bbox does not exceed grow cap', () => {
+    // 2 paragraphs at 18px, ~22 chars each, in a 200×40 text box wrapped by a
+    // tight container so growTextHeight is capped to the container's bottom
+    // (~68px), which is still less than the required ~133px → shrink fires.
+    const html =
+      '<p style="font-size: 18px;">Несколько слов в строке</p>' +
+      '<p style="font-size: 18px;">Ещё несколько слов тут</p>';
+    const text: CanvasElement = {
+      id: 'text_clip',
+      type: 'text',
+      left: 60,
+      top: 60,
+      width: 200,
+      height: 40,
+      content: html,
+    };
+    const els = withTightContainer(text);
+    const reports = fixSlideLayouts([makeSceneWithElements(els)]);
+    const shrinkLine = reports[0]?.messages.find((m) =>
+      m.startsWith('shrink text_clip'),
+    );
+    expect(shrinkLine).toBeDefined();
+    // Box height must never exceed the grow-pass cap (container bottom - top).
+    // Container is text.height + 20 = 60 tall at top=50, so capped at ~108.
+    expect(text.height).toBeLessThanOrEqual(108);
+    expect(text.content).not.toMatch(/font-size:\s*18px/);
+    expect(text.content).toMatch(/font-size:\s*1[2-7]px/);
+  });
+
+  test('text that fits is left untouched', () => {
+    const html = '<p style="font-size: 16px;">Короткий</p>';
+    const el: CanvasElement = {
+      id: 'text_ok',
+      type: 'text',
+      left: 100,
+      top: 100,
+      width: 400,
+      height: 80,
+      content: html,
+    };
+    fixSlideLayouts([makeSceneWithElements([el])]);
+    expect(el.content).toBe(html);
+    expect(el.height).toBe(80);
+  });
+
+  test('cannot fit even at 12px floor → skip-shrink, content untouched', () => {
+    // Many long paragraphs at 18px in a tight container — even after delta=6
+    // (→12px floor) the content still overflows. Must skip-shrink.
+    const html =
+      '<p style="font-size: 18px;">Очень длинный параграф со множеством слов и подробностями текста для проверки</p>'.repeat(6);
+    const text: CanvasElement = {
+      id: 'text_too_tall',
+      type: 'text',
+      left: 60,
+      top: 60,
+      width: 180,
+      height: 40,
+      content: html,
+    };
+    const before = text.content;
+    const els = withTightContainer(text);
+    const reports = fixSlideLayouts([makeSceneWithElements(els)]);
+    const skipLine = reports[0]?.messages.find((m) =>
+      m.includes('skip-shrink text_too_tall'),
+    );
+    expect(skipLine).toBeDefined();
+    expect(text.content).toBe(before);
+  });
+
+  test('text with no explicit font-size → skip-shrink, content untouched', () => {
+    const text: CanvasElement = {
+      id: 'text_no_fs',
+      type: 'text',
+      left: 60,
+      top: 60,
+      width: 200,
+      height: 30,
+      content: '<p>Длинный текст здесь</p>'.repeat(2),
+    };
+    const before = text.content;
+    const els = withTightContainer(text);
+    const reports = fixSlideLayouts([makeSceneWithElements(els)]);
+    const skipLine = reports[0]?.messages.find(
+      (m) =>
+        m.includes('skip-shrink text_no_fs') &&
+        m.includes('no shrinkable explicit font-size'),
+    );
+    expect(skipLine).toBeDefined();
+    expect(text.content).toBe(before);
+  });
+
+  test('all sizes already at 12px floor → skip-shrink', () => {
+    const html = '<p style="font-size: 12px;">Текст</p>'.repeat(8);
+    const text: CanvasElement = {
+      id: 'text_floor',
+      type: 'text',
+      left: 60,
+      top: 60,
+      width: 200,
+      height: 30,
+      content: html,
+    };
+    const els = withTightContainer(text);
+    fixSlideLayouts([makeSceneWithElements(els)]);
+    expect(text.content).toBe(html);
+  });
+
+  test('relative font-size hierarchy is preserved across the shrink', () => {
+    // Two sizes: a 28px header and 18px body. After shrink they go down by
+    // the same delta, so the header is still strictly larger than the body.
+    const html =
+      '<p style="font-size: 28px;">Заголовок</p>' +
+      '<p style="font-size: 18px;">Один два три четыре пять</p>'.repeat(3);
+    const text: CanvasElement = {
+      id: 'text_hier',
+      type: 'text',
+      left: 60,
+      top: 60,
+      width: 200,
+      height: 60,
+      content: html,
+    };
+    const els = withTightContainer(text);
+    fixSlideLayouts([makeSceneWithElements(els)]);
+    const sizes = Array.from(
+      (text.content || '').matchAll(/font-size:\s*(\d+)px/g),
+    ).map((m) => Number(m[1]));
+    expect(sizes.length).toBeGreaterThanOrEqual(2);
+    const header = sizes[0];
+    const body = sizes[sizes.length - 1];
+    expect(header).toBeGreaterThan(body);
   });
 });
