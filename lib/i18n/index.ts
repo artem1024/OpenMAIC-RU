@@ -32,13 +32,24 @@ export const translations = {
 
 export type TranslationKey = keyof (typeof translations)[typeof defaultLocale];
 
-export function translate(locale: Locale, key: string): string {
+export function translate(
+  locale: Locale,
+  key: string,
+  vars?: Record<string, string | number>,
+): string {
   const keys = key.split('.');
   let value: unknown = translations[locale];
   for (const k of keys) {
     value = (value as Record<string, unknown>)?.[k];
   }
-  return (typeof value === 'string' ? value : undefined) ?? key;
+  let str = (typeof value === 'string' ? value : undefined) ?? key;
+  if (vars) {
+    // Поддерживаем оба плейсхолдера: {{name}} (upstream-стиль) и {name}.
+    str = str.replace(/\{\{?\s*(\w+)\s*\}?\}/g, (m, name: string) =>
+      Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : m,
+    );
+  }
+  return str;
 }
 
 export function getClientTranslation(key: string): string {
