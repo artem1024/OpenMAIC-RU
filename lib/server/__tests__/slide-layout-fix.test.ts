@@ -54,10 +54,7 @@ function makeSceneWithElements(elements: CanvasElement[]): Scene {
  * tighter pad ⇒ smaller post-grow height. Container width/height are
  * clamped to `findContainers`' minimums (>=120w, >=80h, path "M 0 0 ...").
  */
-function withTightContainer(
-  text: CanvasElement,
-  padBottom = 30,
-): CanvasElement[] {
+function withTightContainer(text: CanvasElement, padBottom = 30): CanvasElement[] {
   const container: CanvasElement = {
     id: 'container_' + text.id,
     type: 'shape',
@@ -72,10 +69,7 @@ function withTightContainer(
 
 describe('estimateTextHeight (Б2a)', () => {
   test('plain <p> text — single short line at 18px in 400px width', () => {
-    const h = estimateTextHeight(
-      '<p style="font-size: 18px;">Короткий текст.</p>',
-      400,
-    );
+    const h = estimateTextHeight('<p style="font-size: 18px;">Короткий текст.</p>', 400);
     // 1 line × 18 × 1.45 ≈ 26 + 8 pad ≈ 34. Allow a generous range to
     // tolerate the +0.4 phantom-line accumulator in the helper.
     expect(h).toBeGreaterThanOrEqual(20);
@@ -112,15 +106,9 @@ describe('estimateTextHeight (Б2a)', () => {
   });
 
   test('<br>, <br/>, <br /> all introduce a line break', () => {
-    const oneLine = estimateTextHeight(
-      '<p style="font-size: 16px;">A B C</p>',
-      400,
-    );
+    const oneLine = estimateTextHeight('<p style="font-size: 16px;">A B C</p>', 400);
     for (const br of ['<br>', '<br/>', '<br />', '<BR/>']) {
-      const twoLines = estimateTextHeight(
-        `<p style="font-size: 16px;">A${br}B${br}C</p>`,
-        400,
-      );
+      const twoLines = estimateTextHeight(`<p style="font-size: 16px;">A${br}B${br}C</p>`, 400);
       expect(twoLines).toBeGreaterThan(oneLine);
     }
   });
@@ -140,10 +128,7 @@ describe('estimateTextHeight (Б2a)', () => {
   });
 
   test('two <p> blocks return more than a single equivalent paragraph', () => {
-    const single = estimateTextHeight(
-      '<p style="font-size: 16px;">Текст</p>',
-      400,
-    );
+    const single = estimateTextHeight('<p style="font-size: 16px;">Текст</p>', 400);
     const double = estimateTextHeight(
       '<p style="font-size: 16px;">Текст</p><p style="font-size: 16px;">Ещё текст</p>',
       400,
@@ -152,10 +137,7 @@ describe('estimateTextHeight (Б2a)', () => {
   });
 
   test('<li>, <ul>, <h2>, <blockquote> all act as block tags', () => {
-    const para = estimateTextHeight(
-      '<p style="font-size: 16px;">Один Два Три</p>',
-      400,
-    );
+    const para = estimateTextHeight('<p style="font-size: 16px;">Один Два Три</p>', 400);
     const list = estimateTextHeight(
       '<ul style="font-size: 16px;"><li>Один</li><li>Два</li><li>Три</li></ul>',
       400,
@@ -195,9 +177,7 @@ describe('autoShrinkTexts (Б2b)', () => {
     };
     const els = withTightContainer(text);
     const reports = fixSlideLayouts([makeSceneWithElements(els)]);
-    const shrinkLine = reports[0]?.messages.find((m) =>
-      m.startsWith('shrink text_clip'),
-    );
+    const shrinkLine = reports[0]?.messages.find((m) => m.startsWith('shrink text_clip'));
     expect(shrinkLine).toBeDefined();
     // Box height must never exceed the grow-pass cap (container bottom - top).
     // Container is text.height + 20 = 60 tall at top=50, so capped at ~108.
@@ -226,7 +206,9 @@ describe('autoShrinkTexts (Б2b)', () => {
     // Many long paragraphs at 18px in a tight container — even after delta=6
     // (→12px floor) the content still overflows. Must skip-shrink.
     const html =
-      '<p style="font-size: 18px;">Очень длинный параграф со множеством слов и подробностями текста для проверки</p>'.repeat(6);
+      '<p style="font-size: 18px;">Очень длинный параграф со множеством слов и подробностями текста для проверки</p>'.repeat(
+        6,
+      );
     const text: CanvasElement = {
       id: 'text_too_tall',
       type: 'text',
@@ -239,9 +221,7 @@ describe('autoShrinkTexts (Б2b)', () => {
     const before = text.content;
     const els = withTightContainer(text);
     const reports = fixSlideLayouts([makeSceneWithElements(els)]);
-    const skipLine = reports[0]?.messages.find((m) =>
-      m.includes('skip-shrink text_too_tall'),
-    );
+    const skipLine = reports[0]?.messages.find((m) => m.includes('skip-shrink text_too_tall'));
     expect(skipLine).toBeDefined();
     expect(text.content).toBe(before);
   });
@@ -260,9 +240,7 @@ describe('autoShrinkTexts (Б2b)', () => {
     const els = withTightContainer(text);
     const reports = fixSlideLayouts([makeSceneWithElements(els)]);
     const skipLine = reports[0]?.messages.find(
-      (m) =>
-        m.includes('skip-shrink text_no_fs') &&
-        m.includes('no shrinkable explicit font-size'),
+      (m) => m.includes('skip-shrink text_no_fs') && m.includes('no shrinkable explicit font-size'),
     );
     expect(skipLine).toBeDefined();
     expect(text.content).toBe(before);
@@ -301,12 +279,122 @@ describe('autoShrinkTexts (Б2b)', () => {
     };
     const els = withTightContainer(text);
     fixSlideLayouts([makeSceneWithElements(els)]);
-    const sizes = Array.from(
-      (text.content || '').matchAll(/font-size:\s*(\d+)px/g),
-    ).map((m) => Number(m[1]));
+    const sizes = Array.from((text.content || '').matchAll(/font-size:\s*(\d+)px/g)).map((m) =>
+      Number(m[1]),
+    );
     expect(sizes.length).toBeGreaterThanOrEqual(2);
     const header = sizes[0];
     const body = sizes[sizes.length - 1];
     expect(header).toBeGreaterThan(body);
+  });
+});
+
+describe('dropSevereFlowOverlaps', () => {
+  test('drops a clamped lower note card instead of overlapping prior text', () => {
+    const els: CanvasElement[] = [
+      {
+        id: 'body',
+        type: 'text',
+        left: 60,
+        top: 439,
+        width: 440,
+        height: 122,
+        content:
+          '<p style="font-size: 16px;">• Пункт один</p><p style="font-size: 16px;">• Пункт два</p>',
+      },
+      {
+        id: 'note_bg',
+        type: 'shape',
+        left: 60,
+        top: 553,
+        width: 880,
+        height: 100,
+        path: 'M 0 0 L 1 0 L 1 1 L 0 1 Z',
+      },
+      {
+        id: 'note_text',
+        type: 'text',
+        left: 80,
+        top: 565,
+        width: 840,
+        height: 76,
+        content:
+          '<p style="font-size: 18px;"><strong>Урок истории:</strong> заметка не помещается.</p>',
+      },
+    ];
+    const scene = makeSceneWithElements(els);
+    (scene as unknown as { actions: Array<{ type: string; elementId?: string }> }).actions = [
+      { type: 'spotlight', elementId: 'note_text' },
+    ];
+
+    const reports = fixSlideLayouts([scene]);
+    const remaining = new Set(els.map((e) => e.id));
+
+    expect(remaining.has('body')).toBe(true);
+    expect(remaining.has('note_bg')).toBe(false);
+    expect(remaining.has('note_text')).toBe(false);
+    expect(reports[0]?.messages.some((m) => m.startsWith('drop-overlap'))).toBe(true);
+    expect((scene as unknown as { actions: unknown[] }).actions).toEqual([]);
+  });
+
+  test('drops stacked orphan text blocks, keeping the first readable item', () => {
+    const els: CanvasElement[] = [
+      {
+        id: 'bullet_1',
+        type: 'text',
+        left: 60,
+        top: 474,
+        width: 420,
+        height: 70,
+        content: '<p style="font-size: 16px;">• Градиентный спуск</p>',
+      },
+      {
+        id: 'bullet_2',
+        type: 'text',
+        left: 60,
+        top: 491,
+        width: 420,
+        height: 70,
+        content: '<p style="font-size: 16px;">• Многослойность</p>',
+      },
+      {
+        id: 'bullet_3',
+        type: 'text',
+        left: 60,
+        top: 491,
+        width: 420,
+        height: 70,
+        content: '<p style="font-size: 16px;">• Триумф 1989 г.</p>',
+      },
+    ];
+
+    fixSlideLayouts([makeSceneWithElements(els)]);
+    expect(els.map((e) => e.id)).toEqual(['bullet_1']);
+  });
+
+  test('preserves mild text bbox overlap that renders with normal line spacing', () => {
+    const els: CanvasElement[] = [
+      {
+        id: 'bullet_1',
+        type: 'text',
+        left: 80,
+        top: 340,
+        width: 380,
+        height: 96,
+        content: '<p style="font-size: 18px;">• Гонка вычислений: краткий текст</p>',
+      },
+      {
+        id: 'bullet_2',
+        type: 'text',
+        left: 80,
+        top: 425,
+        width: 380,
+        height: 88,
+        content: '<p style="font-size: 16px;">• Стена данных: краткий текст</p>',
+      },
+    ];
+
+    fixSlideLayouts([makeSceneWithElements(els)]);
+    expect(els.map((e) => e.id)).toEqual(['bullet_1', 'bullet_2']);
   });
 });

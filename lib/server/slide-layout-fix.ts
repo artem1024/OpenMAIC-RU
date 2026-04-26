@@ -14,6 +14,7 @@
  *   3. clamp offscreen       — container-aware: if a card extends below the
  *                              viewport, shift the card plus all children up
  *                              together so relative positions are preserved.
+ *   4. drop unreadable severe overlaps created by the safety clamps.
  */
 
 import type { Scene } from '@/lib/types/stage';
@@ -39,6 +40,8 @@ const STRIP_TAGS = /<[^>]+>/g;
 // "<p>• <strong>Цель:</strong> текст</p>" is one line, not three.
 const BLOCK_TAG_RE = /<br\s*\/?>|<\/?(p|div|li|ul|ol|h[1-6]|blockquote)(\s[^>]*)?>/gi;
 const INLINE_TAG_RE = /<[^>]+>/g;
+const SEVERE_FLOW_OVERLAP_PX = 24;
+const FLOW_OVERLAP_X_RATIO = 0.2;
 
 function num(v: unknown, fallback = 0): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
@@ -63,6 +66,18 @@ function right(e: AnyElement): number {
   return left(e) + w(e);
 }
 
+function xOverlap(a: AnyElement, b: AnyElement): number {
+  return Math.max(0, Math.min(right(a), right(b)) - Math.max(left(a), left(b)));
+}
+
+function yOverlap(a: AnyElement, b: AnyElement): number {
+  return Math.max(0, Math.min(bottom(a), bottom(b)) - Math.max(top(a), top(b)));
+}
+
+function isFlowElement(e: AnyElement): boolean {
+  return e.type === 'text' || e.type === 'table' || e.type === 'latex';
+}
+
 function isInside(child: AnyElement, parent: AnyElement, slack = 4): boolean {
   if (child.top === undefined || child.left === undefined) return false;
   return (
@@ -82,6 +97,15 @@ function findContainers(elements: AnyElement[]): AnyElement[] {
   });
 }
 
+function findSmallestContainer(e: AnyElement, containers: AnyElement[]): AnyElement | null {
+  let best: AnyElement | null = null;
+  for (const c of containers) {
+    if (c === e || !isInside(e, c)) continue;
+    if (best === null || h(c) * w(c) < h(best) * w(best)) best = c;
+  }
+  return best;
+}
+
 function isTitleText(e: AnyElement): boolean {
   if (e.type !== 'text') return false;
   const content = typeof e.content === 'string' ? e.content : '';
@@ -90,16 +114,11 @@ function isTitleText(e: AnyElement): boolean {
   return plain.length <= 80 && plain.endsWith(':');
 }
 
-function titleAtBottomSwap(
-  elements: AnyElement[],
-  report: string[],
-): number {
+function titleAtBottomSwap(elements: AnyElement[], report: string[]): number {
   const containers = findContainers(elements);
   let changed = 0;
   for (const cont of containers) {
-    const children = elements.filter(
-      (e) => e !== cont && isInside(e, cont),
-    );
+    const children = elements.filter((e) => e !== cont && isInside(e, cont));
     if (children.length < 2) continue;
     const title = children.find(isTitleText);
     if (!title) continue;
@@ -150,8 +169,8 @@ export function estimateTextHeight(contentHtml: string, widthPx: number): number
     .replace(/\n\s*\n+/g, '\n\n')
     .trim();
   if (!plain) return 0;
-  const sizes = Array.from(contentHtml.matchAll(/font-size:\s*(\d+)px/g)).map(
-    (m) => parseInt(m[1], 10),
+  const sizes = Array.from(contentHtml.matchAll(/font-size:\s*(\d+)px/g)).map((m) =>
+    parseInt(m[1], 10),
   );
   const avgSize = sizes.length ? sizes.reduce((a, b) => a + b, 0) / sizes.length : 16;
   const lineH = avgSize * 1.45;
@@ -187,11 +206,7 @@ function shrinkFontSizes(content: string, deltaPx: number): string {
  * be picked up by retry/reflow rather than turned into a giant box that
  * collides with neighbours.
  */
-function autoShrinkTexts(
-  elements: AnyElement[],
-  vpH: number,
-  report: string[],
-): number {
+function autoShrinkTexts(elements: AnyElement[], vpH: number, report: string[]): number {
   let changed = 0;
   for (const e of elements) {
     if (e.type !== 'text') continue;
@@ -204,15 +219,13 @@ function autoShrinkTexts(
     if (!overflowsBox && !overflowsViewport) continue;
 
     if (heightPx > 0 && required > heightPx * 3) {
-      report.push(
-        `skip-shrink ${e.id}: suspicious required=${required} (box=${heightPx})`,
-      );
+      report.push(`skip-shrink ${e.id}: suspicious required=${required} (box=${heightPx})`);
       continue;
     }
 
-    const sizes = Array.from(
-      content.matchAll(/font-size\s*:\s*(\d+(?:\.\d+)?)\s*px/gi),
-    ).map((m) => Number(m[1]));
+    const sizes = Array.from(content.matchAll(/font-size\s*:\s*(\d+(?:\.\d+)?)\s*px/gi)).map((m) =>
+      Number(m[1]),
+    );
     if (!sizes.length || sizes.every((fs) => fs <= 12)) {
       report.push(`skip-shrink ${e.id}: no shrinkable explicit font-size`);
       continue;
@@ -259,11 +272,7 @@ function autoShrinkTexts(
   return changed;
 }
 
-function growTextHeight(
-  elements: AnyElement[],
-  vpH: number,
-  report: string[],
-): number {
+function growTextHeight(elements: AnyElement[], vpH: number, report: string[]): number {
   const containers = findContainers(elements);
   let changed = 0;
   for (const e of elements) {
@@ -316,19 +325,17 @@ function findSatellites(
     if (!hOverlap) continue;
     const aboveGap = top(cont) - bottom(e);
     const belowGap = top(e) - bottom(cont);
-    if ((aboveGap >= -1 && aboveGap <= SATELLITE_GAP) ||
-        (belowGap >= -1 && belowGap <= SATELLITE_GAP)) {
+    if (
+      (aboveGap >= -1 && aboveGap <= SATELLITE_GAP) ||
+      (belowGap >= -1 && belowGap <= SATELLITE_GAP)
+    ) {
       sats.push(e);
     }
   }
   return sats;
 }
 
-function clampOffscreen(
-  elements: AnyElement[],
-  vpH: number,
-  report: string[],
-): number {
+function clampOffscreen(elements: AnyElement[], vpH: number, report: string[]): number {
   let changed = 0;
   const containers = findContainers(elements);
   const childrenOf = new Map<string, AnyElement[]>();
@@ -429,15 +436,90 @@ function clampOffscreen(
         `clamp ${e.id}: top ${top(e)}→${proposedTop} (h=${h(e)}, forced — overlap unavoidable)`,
       );
     } else {
-      report.push(
-        `shrink ${e.id}: top ${top(e)}→${newTop}, h ${h(e)}→${newH} (overlap avoided)`,
-      );
+      report.push(`shrink ${e.id}: top ${top(e)}→${newTop}, h ${h(e)}→${newH} (overlap avoided)`);
       e.top = newTop;
       e.height = newH;
     }
     changed += 1;
   }
   return changed;
+}
+
+function collectDropGroup(
+  victim: AnyElement,
+  elements: AnyElement[],
+  containers: AnyElement[],
+): AnyElement[] {
+  const parent = findSmallestContainer(victim, containers);
+  if (!parent) return [victim];
+  return elements.filter((e) => e === parent || isInside(e, parent));
+}
+
+function dropSevereFlowOverlaps(elements: AnyElement[], report: string[]): Set<string> {
+  const droppedIds = new Set<string>();
+
+  for (;;) {
+    const containers = findContainers(elements).filter((e) => !droppedIds.has(e.id));
+    const candidates = elements.filter((e) => !droppedIds.has(e.id) && isFlowElement(e));
+    let worstPair: [AnyElement, AnyElement] | null = null;
+    let worstOverlap = 0;
+
+    for (let i = 0; i < candidates.length; i++) {
+      for (let j = i + 1; j < candidates.length; j++) {
+        const a = candidates[i];
+        const b = candidates[j];
+        const xo = xOverlap(a, b);
+        if (xo <= Math.min(w(a), w(b)) * FLOW_OVERLAP_X_RATIO) continue;
+        const yo = yOverlap(a, b);
+        if (yo <= SEVERE_FLOW_OVERLAP_PX || yo <= worstOverlap) continue;
+        worstPair = [a, b];
+        worstOverlap = yo;
+      }
+    }
+
+    if (!worstPair) break;
+
+    const [a, b] = worstPair;
+    const victim =
+      top(a) > top(b) || (top(a) === top(b) && elements.indexOf(a) > elements.indexOf(b)) ? a : b;
+    const dropGroup = collectDropGroup(victim, elements, containers).filter(
+      (e) => !droppedIds.has(e.id),
+    );
+    if (dropGroup.length === 0) break;
+
+    for (const e of dropGroup) droppedIds.add(e.id);
+    report.push(
+      `drop-overlap ${dropGroup.map((e) => e.id).join(',')}: ${a.id}×${b.id} overlap=${Math.round(
+        worstOverlap,
+      )}px`,
+    );
+  }
+
+  if (droppedIds.size > 0) {
+    for (let i = elements.length - 1; i >= 0; i--) {
+      if (droppedIds.has(elements[i].id)) elements.splice(i, 1);
+    }
+  }
+
+  return droppedIds;
+}
+
+function removeActionsForDroppedElements(
+  scene: Scene,
+  droppedIds: Set<string>,
+  report: string[],
+): number {
+  if (droppedIds.size === 0) return 0;
+  const withActions = scene as { actions?: Array<Record<string, unknown>> };
+  if (!Array.isArray(withActions.actions)) return 0;
+  const before = withActions.actions.length;
+  withActions.actions = withActions.actions.filter((action) => {
+    const elementId = action.elementId;
+    return typeof elementId !== 'string' || !droppedIds.has(elementId);
+  });
+  const removed = before - withActions.actions.length;
+  if (removed > 0) report.push(`drop-overlap-actions: removed ${removed}`);
+  return removed;
 }
 
 export interface LayoutFixReport {
@@ -468,6 +550,9 @@ export function fixSlideLayouts(scenes: Scene[]): LayoutFixReport[] {
     changes += growTextHeight(canvas.elements, vpH, messages);
     changes += clampOffscreen(canvas.elements, vpH, messages);
     changes += autoShrinkTexts(canvas.elements, vpH, messages);
+    const droppedIds = dropSevereFlowOverlaps(canvas.elements, messages);
+    changes += droppedIds.size;
+    changes += removeActionsForDroppedElements(scene, droppedIds, messages);
     if (changes > 0) {
       reports.push({
         sceneIndex: idx,
