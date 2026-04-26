@@ -22,6 +22,10 @@ export interface ChartOptionPayload {
   stack?: boolean;
 }
 
+function shouldShowPointLabels(data: ChartData): boolean {
+  return data.labels.length <= 4 && data.series.length <= 1;
+}
+
 export const getChartOption = ({
   type,
   data,
@@ -136,6 +140,7 @@ export const getChartOption = ({
     };
   }
   if (type === 'line') {
+    const showPointLabels = shouldShowPointLabels(data);
     return {
       color: themeColors,
       textStyle,
@@ -159,7 +164,7 @@ export const getChartOption = ({
           type: 'line',
           smooth: lineSmooth,
           label: {
-            show: true,
+            show: showPointLabels,
           },
         };
         if (stack) seriesItem.stack = 'A';
@@ -242,6 +247,7 @@ export const getChartOption = ({
     };
   }
   if (type === 'area') {
+    const showPointLabels = shouldShowPointLabels(data);
     return {
       color: themeColors,
       textStyle,
@@ -266,7 +272,7 @@ export const getChartOption = ({
           type: 'line',
           areaStyle: {},
           label: {
-            show: true,
+            show: showPointLabels,
           },
         };
         if (stack) seriesItem.stack = 'A';

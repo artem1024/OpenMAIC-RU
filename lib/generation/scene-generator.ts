@@ -469,6 +469,7 @@ interface GenerateSlideOptions {
 const LAYOUT_RETRY_OVERFLOW_PX = 20;
 const LAYOUT_RETRY_CLIP_PX = 20;
 const LAYOUT_RETRY_COLLISION_PX = 10;
+const LAYOUT_RETRY_OVERLAP_PX = 10;
 
 /**
  * Generate slide content
@@ -637,6 +638,7 @@ async function generateSlideContent(
   const needsRetry =
     fit.metrics.residualOverflowPx > LAYOUT_RETRY_OVERFLOW_PX ||
     fit.metrics.residualCollisionPx > LAYOUT_RETRY_COLLISION_PX ||
+    fit.metrics.residualOverlapPx > LAYOUT_RETRY_OVERLAP_PX ||
     fit.metrics.residualClippedPx > LAYOUT_RETRY_CLIP_PX ||
     fit.metrics.droppedElementIds.length > 0;
   if (needsRetry && attempt < 1) {
@@ -644,11 +646,16 @@ async function generateSlideContent(
       fit.metrics.residualCollisionPx > LAYOUT_RETRY_COLLISION_PX
         ? ` Columns conflict with intro text (${fit.metrics.residualCollisionPx}px); shorten intro text or use a simpler card structure.`
         : '';
+    const overlapHint =
+      fit.metrics.residualOverlapPx > LAYOUT_RETRY_OVERLAP_PX
+        ? ` Text/table elements overlap (${fit.metrics.residualOverlapPx}px); avoid placing bullet lists and tables in the same visual block and simplify the lower composition.`
+        : '';
     const hint =
       `Previous layout attempt failed: residualOverflow=${fit.metrics.residualOverflowPx}px, ` +
       `collision=${fit.metrics.residualCollisionPx}px, ` +
+      `overlap=${fit.metrics.residualOverlapPx}px, ` +
       `clipped=${fit.metrics.residualClippedPx}px, dropped=${fit.metrics.droppedElementIds.length}. ` +
-      `Reduce content density.${collisionHint}`;
+      `Reduce content density.${collisionHint}${overlapHint}`;
     log.warn(`[${outline.title}] retrying slide generation: ${hint}`);
     return generateSlideContent(
       outline,

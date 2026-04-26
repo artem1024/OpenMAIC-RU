@@ -13,11 +13,12 @@
  *   4. Pull overflowing columns up into spare headroom above them.
  *   5. Squeeze inter-card gaps in columns that still overflow.
  *   6. Drop cards that start entirely below the viewport (AI placed them there).
- *   7. Warn about any residual overflow.
+ *   7. Guard text contrast and report residual overlap/overflow metrics.
  */
 import type {
   PPTElement,
   PPTLatexElement,
+  PPTTableElement,
   PPTTextElement,
   PPTShapeElement,
 } from '@/lib/types/slides';
@@ -59,15 +60,27 @@ const SAFE_BOTTOM_MARGIN = 5;
 // Tolerance for bbox containment / overlap checks (handles AI off-by-1).
 const BBOX_TOL = 3;
 
+// Ignore tiny overlaps from rounding/anti-aliased decorations; larger values
+// indicate real text/table/latex collisions that should retry generation.
+const GENERIC_OVERLAP_MIN_PX = 8;
+const GENERIC_OVERLAP_MIN_X_RATIO = 0.2;
+const LOW_CONTRAST_TEXT_COLOR = '#1f2937';
+const DARK_SHAPE_LUMINANCE_MAX = 0.25;
+const WHITEISH_RGB_MIN = 245;
+
 export interface FitMetrics {
   /** Max element bottom over canvas.height, 0 when slide fits. */
   residualOverflowPx: number;
   /** Max unresolved geometric collision after attempted reflow, 0 when none remain. */
   residualCollisionPx: number;
+  /** Max unresolved candidate element overlap after all reflow, 0 when none remain. */
+  residualOverlapPx: number;
   /** Max (required - height) across text elements, 0 when nothing clipped. */
   residualClippedPx: number;
   /** IDs involved in unresolved collisions that should trigger a retry. */
   collisionElementIds: string[];
+  /** IDs involved in unresolved text/table/latex overlaps that should trigger a retry. */
+  overlapElementIds: string[];
   /** IDs that Step 6 dropped because they sat entirely below the viewport. */
   droppedElementIds: string[];
   /** IDs whose bottom still exceeds canvas.height after the full pipeline. */
@@ -83,8 +96,10 @@ export interface FitResult {
 const EMPTY_METRICS: FitMetrics = {
   residualOverflowPx: 0,
   residualCollisionPx: 0,
+  residualOverlapPx: 0,
   residualClippedPx: 0,
   collisionElementIds: [],
+  overlapElementIds: [],
   droppedElementIds: [],
   overflowElementIds: [],
 };
@@ -140,25 +155,36 @@ function isText(el: PPTElement): el is PPTTextElement {
 function isLatex(el: PPTElement): el is PPTLatexElement {
   return el.type === 'latex';
 }
+function isTable(el: PPTElement): el is PPTTableElement {
+  return el.type === 'table';
+}
 function isShape(el: PPTElement): el is PPTShapeElement {
   return el.type === 'shape';
 }
 
-function isFlowMember(el: PPTElement): el is PPTTextElement | PPTLatexElement {
-  return isText(el) || isLatex(el);
+function isFlowMember(el: PPTElement): el is PPTTextElement | PPTLatexElement | PPTTableElement {
+  return isText(el) || isLatex(el) || isTable(el);
 }
 
 function cardKey(card: Card): string {
   return card.bg?.id ?? card.members[0].id;
 }
 
-function overlapsX(a: { left: number; right: number }, b: { left: number; right: number }): boolean {
+function overlapsX(
+  a: { left: number; right: number },
+  b: { left: number; right: number },
+): boolean {
   return a.left < b.right && b.left < a.right;
 }
 
 interface CollisionReport {
   residualCollisionPx: number;
   collisionElementIds: Set<string>;
+}
+
+interface OverlapReport {
+  residualOverlapPx: number;
+  overlapElementIds: Set<string>;
 }
 
 function bboxContains(outer: Sized, inner: Sized, tol = BBOX_TOL): boolean {
@@ -168,6 +194,147 @@ function bboxContains(outer: Sized, inner: Sized, tol = BBOX_TOL): boolean {
     inner.top + tol >= outer.top &&
     inner.top + inner.height <= outer.top + outer.height + tol
   );
+}
+
+function xOverlapPx(a: Sized, b: Sized): number {
+  return Math.max(0, Math.min(a.left + a.width, b.left + b.width) - Math.max(a.left, b.left));
+}
+
+function yOverlapPx(a: Sized, b: Sized): number {
+  return Math.max(0, Math.min(a.top + a.height, b.top + b.height) - Math.max(a.top, b.top));
+}
+
+function measureResidualOverlaps(elements: PPTElement[]): OverlapReport {
+  const candidates = elements.filter(hasHeight).filter(isFlowMember);
+  const overlapElementIds = new Set<string>();
+  let residualOverlapPx = 0;
+
+  for (let i = 0; i < candidates.length; i++) {
+    for (let j = i + 1; j < candidates.length; j++) {
+      const a = candidates[i];
+      const b = candidates[j];
+      const xOverlap = xOverlapPx(a, b);
+      if (xOverlap <= Math.min(a.width, b.width) * GENERIC_OVERLAP_MIN_X_RATIO) continue;
+
+      const yOverlap = yOverlapPx(a, b);
+      if (yOverlap <= GENERIC_OVERLAP_MIN_PX) continue;
+
+      residualOverlapPx = Math.max(residualOverlapPx, yOverlap);
+      overlapElementIds.add(a.id);
+      overlapElementIds.add(b.id);
+    }
+  }
+
+  return { residualOverlapPx, overlapElementIds };
+}
+
+interface RgbColor {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
+
+function parseCssColor(value?: string): RgbColor | null {
+  if (!value) return null;
+  const raw = value.trim().toLowerCase();
+  if (raw === 'white') return { r: 255, g: 255, b: 255, a: 1 };
+
+  const hex = raw.match(/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+  if (hex) {
+    const h = hex[1];
+    if (h.length === 3 || h.length === 4) {
+      return {
+        r: parseInt(h[0] + h[0], 16),
+        g: parseInt(h[1] + h[1], 16),
+        b: parseInt(h[2] + h[2], 16),
+        a: h.length === 4 ? parseInt(h[3] + h[3], 16) / 255 : 1,
+      };
+    }
+    return {
+      r: parseInt(h.slice(0, 2), 16),
+      g: parseInt(h.slice(2, 4), 16),
+      b: parseInt(h.slice(4, 6), 16),
+      a: h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1,
+    };
+  }
+
+  const rgb = raw.match(
+    /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+)\s*)?\)$/i,
+  );
+  if (!rgb) return null;
+  return {
+    r: Number(rgb[1]),
+    g: Number(rgb[2]),
+    b: Number(rgb[3]),
+    a: rgb[4] === undefined ? 1 : Number(rgb[4]),
+  };
+}
+
+function relativeLuminance({ r, g, b }: RgbColor): number {
+  const convert = (channel: number) => {
+    const c = channel / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * convert(r) + 0.7152 * convert(g) + 0.0722 * convert(b);
+}
+
+function isWhiteishColor(value?: string): boolean {
+  const color = parseCssColor(value);
+  return (
+    !!color &&
+    color.a > 0.5 &&
+    color.r >= WHITEISH_RGB_MIN &&
+    color.g >= WHITEISH_RGB_MIN &&
+    color.b >= WHITEISH_RGB_MIN
+  );
+}
+
+function isDarkShape(shape: PPTShapeElement): boolean {
+  if (shape.opacity !== undefined && shape.opacity < 0.6) return false;
+  const fill = parseCssColor(shape.fill);
+  return !!fill && fill.a > 0.5 && relativeLuminance(fill) < DARK_SHAPE_LUMINANCE_MAX;
+}
+
+function isContainedInDarkShape(text: PPTTextElement, shapes: PPTShapeElement[]): boolean {
+  return shapes.some((shape) => isDarkShape(shape) && bboxContains(shape, text));
+}
+
+function replaceWhiteInlineTextColors(content: string): string {
+  return content.replace(
+    /(^|[;"'\s])color\s*:\s*(#[0-9a-f]{3,8}|rgba?\([^)]*\)|white)\s*(;?)/gi,
+    (match, prefix: string, color: string, suffix: string) => {
+      if (!isWhiteishColor(color)) return match;
+      return `${prefix}color: ${LOW_CONTRAST_TEXT_COLOR}${suffix}`;
+    },
+  );
+}
+
+function applyTextContrastGuard(elements: PPTElement[]): number {
+  const sized = elements.filter(hasHeight);
+  const shapes = sized.filter(isShape);
+  let changed = 0;
+
+  for (const el of sized) {
+    if (!isText(el)) continue;
+    if (isContainedInDarkShape(el, shapes)) continue;
+
+    let changedText = false;
+    if (isWhiteishColor(el.defaultColor)) {
+      el.defaultColor = LOW_CONTRAST_TEXT_COLOR;
+      changedText = true;
+    }
+
+    const nextContent = replaceWhiteInlineTextColors(el.content);
+    if (nextContent !== el.content) {
+      el.content = nextContent;
+      changedText = true;
+    }
+
+    if (changedText) changed++;
+  }
+
+  return changed;
 }
 
 /**
@@ -221,8 +388,7 @@ function findAlignmentOwner(el: Sized, shapes: PPTShapeElement[]): OwnerMatch | 
 
     const topAligned = Math.abs(el.top - bg.top) <= 10;
     const leftAligned = el.left >= bg.left - 2 && el.left <= bg.left + bg.width * 0.3;
-    const xOverlap =
-      Math.min(el.left + el.width, bg.left + bg.width) - Math.max(el.left, bg.left);
+    const xOverlap = Math.min(el.left + el.width, bg.left + bg.width) - Math.max(el.left, bg.left);
     const xOverlapPct = xOverlap / Math.min(el.width, bg.width);
     if (!(topAligned && leftAligned && xOverlapPct >= 0.7)) continue;
 
@@ -339,8 +505,8 @@ function fitCard(card: Card): number {
     if (required > m.height) m.height = required;
   }
 
-  // Sort text/latex flow-members top-to-bottom and fix vertical overlaps.
-  // Text can grow above; latex is rigid but must move when text expands.
+  // Sort text/latex/table flow-members top-to-bottom and fix vertical overlaps.
+  // Text can grow above; latex/table are rigid but must move when text expands.
   const flowMembers = card.members.filter(isFlowMember).sort((a, b) => a.top - b.top);
   for (let i = 1; i < flowMembers.length; i++) {
     const prev = flowMembers[i - 1];
@@ -455,7 +621,9 @@ function resolveWideTextCollisions(
 
       const dy = neededTop - card.top;
       const affected = affectedCardsForShift(columns, card);
-      const lastBottomAfterShift = Math.max(...affected.map((affectedCard) => affectedCard.bottom + dy));
+      const lastBottomAfterShift = Math.max(
+        ...affected.map((affectedCard) => affectedCard.bottom + dy),
+      );
       if (lastBottomAfterShift <= safeBottom + BBOX_TOL) {
         shiftCardAndFollowing(columns, card, dy);
         continue;
@@ -645,6 +813,26 @@ export function fitSlideLayout(
     e.height = Math.round(e.height);
   }
 
+  // Step 6c: fix high-risk contrast misses deterministically. The generator
+  // sometimes keeps white title text after moving it below a dark header.
+  const contrastFixes = applyTextContrastGuard(finalElements);
+  if (contrastFixes > 0) {
+    warnings.push(
+      `slide-layout-fit: recolored ${contrastFixes} low-contrast white text element(s)`,
+    );
+  }
+
+  // Step 6d: generic overlap metrics for visible content elements that are not
+  // shape backgrounds/decorations. These metrics feed the retry hook upstream.
+  const overlapReport = measureResidualOverlaps(finalElements);
+  if (overlapReport.residualOverlapPx > 0) {
+    warnings.push(
+      `slide-layout-fit: residual overlap — text/table/latex elements overlap by ${overlapReport.residualOverlapPx.toFixed(
+        1,
+      )}px`,
+    );
+  }
+
   // Step 7: compute metrics + final warn. residualOverflow uses maxBottom over
   // canvas.height; residualClipped uses required-vs-height per text element;
   // overflowElementIds collects every element whose bottom still exceeds the
@@ -666,8 +854,10 @@ export function fitSlideLayout(
   const metrics: FitMetrics = {
     residualOverflowPx: Math.max(0, maxBottom - canvas.height),
     residualCollisionPx: collisionReport.residualCollisionPx,
+    residualOverlapPx: overlapReport.residualOverlapPx,
     residualClippedPx,
     collisionElementIds: Array.from(collisionReport.collisionElementIds),
+    overlapElementIds: Array.from(overlapReport.overlapElementIds),
     droppedElementIds: Array.from(dropIds),
     overflowElementIds,
   };

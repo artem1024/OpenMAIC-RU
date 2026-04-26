@@ -9,6 +9,7 @@ import type {
   PPTElement,
   PPTLatexElement,
   PPTShapeElement,
+  PPTTableElement,
   PPTTextElement,
 } from '@/lib/types/slides';
 
@@ -79,12 +80,42 @@ function latex(
   };
 }
 
+function table(
+  id: string,
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+): PPTTableElement {
+  return {
+    id,
+    type: 'table',
+    left,
+    top,
+    width,
+    height,
+    rotate: 0,
+    colWidths: [0.34, 0.33, 0.33],
+    cellMinHeight: 30,
+    outline: { width: 1, style: 'solid', color: '#cbd5e1' },
+    data: [
+      [
+        { id: `${id}-r1c1`, text: 'Параметр', colspan: 1, rowspan: 1 },
+        { id: `${id}-r1c2`, text: 'Нейрон', colspan: 1, rowspan: 1 },
+        { id: `${id}-r1c3`, text: 'Сеть', colspan: 1, rowspan: 1 },
+      ],
+      [
+        { id: `${id}-r2c1`, text: 'Роль', colspan: 1, rowspan: 1 },
+        { id: `${id}-r2c2`, text: 'Сигнал', colspan: 1, rowspan: 1 },
+        { id: `${id}-r2c3`, text: 'Обучение', colspan: 1, rowspan: 1 },
+      ],
+    ],
+  };
+}
+
 describe('measureTextHeight', () => {
   test('single short line at 16px in 360px width returns one-line height', () => {
-    const h = measureTextHeight(
-      '<p style="font-size: 16px;">Короткий текст</p>',
-      360,
-    );
+    const h = measureTextHeight('<p style="font-size: 16px;">Короткий текст</p>', 360);
     // 1 line × 16 × 1.5 = 24, +4 pad = 28
     expect(h).toBeGreaterThanOrEqual(24);
     expect(h).toBeLessThanOrEqual(36);
@@ -228,22 +259,8 @@ describe('fitSlideLayout', () => {
     const els: PPTElement[] = [
       shape('bg', 550, 140, 390, 90),
       // title H=52 ends at 202, but desc starts at 185 → overlap
-      text(
-        't',
-        570,
-        150,
-        360,
-        52,
-        '<p style="font-size: 20px;"><strong>Заголовок</strong></p>',
-      ),
-      text(
-        'd',
-        570,
-        185,
-        360,
-        46,
-        '<p style="font-size: 16px;">Описание.</p>',
-      ),
+      text('t', 570, 150, 360, 52, '<p style="font-size: 20px;"><strong>Заголовок</strong></p>'),
+      text('d', 570, 185, 360, 46, '<p style="font-size: 16px;">Описание.</p>'),
     ];
     const { elements } = fitSlideLayout(els, CANVAS);
     const t = elements.find((e) => e.id === 't') as PPTTextElement;
@@ -302,6 +319,58 @@ describe('fitSlideLayout', () => {
     expect(formula.top).toBe(170);
   });
 
+  test('P2 table flow: table inside a card moves below expanded text', () => {
+    const els: PPTElement[] = [
+      shape('bg', 350, 380, 520, 181),
+      text(
+        'body',
+        370,
+        396,
+        480,
+        165,
+        '<p style="font-size: 18px;">' +
+          'Биологический нейрон получает сигналы через дендриты, суммирует их и передает импульс дальше. '.repeat(
+            2,
+          ) +
+          '</p>',
+      ),
+      table('comparison', 370, 431, 480, 130),
+    ];
+    const { elements, metrics } = fitSlideLayout(els, CANVAS);
+    const body = elements.find((e) => e.id === 'body') as PPTTextElement;
+    const comparison = elements.find((e) => e.id === 'comparison') as PPTTableElement;
+
+    expect(comparison.top).toBeGreaterThanOrEqual(body.top + body.height);
+    expect(metrics.residualOverlapPx).toBe(0);
+    expect(metrics.overlapElementIds).toEqual([]);
+  });
+
+  test('P2 table flow: table below a short title remains stable', () => {
+    const els: PPTElement[] = [
+      shape('bg', 80, 60, 520, 260),
+      text('title', 100, 80, 480, 30, '<p style="font-size: 20px;">Аналогия структур</p>'),
+      table('comparison', 100, 130, 480, 130),
+    ];
+    const { elements, metrics } = fitSlideLayout(els, CANVAS);
+    const comparison = elements.find((e) => e.id === 'comparison') as PPTTableElement;
+
+    expect(comparison.top).toBe(130);
+    expect(metrics.residualOverlapPx).toBe(0);
+  });
+
+  test('P1 generic overlap metrics: catches residual text-text overlap across split columns', () => {
+    const els: PPTElement[] = [
+      text('seed', 0, 10, 100, 40, '<p style="font-size: 16px;">A</p>'),
+      text('bridge', 80, 100, 120, 80, '<p style="font-size: 16px;">B</p>'),
+      text('overlap', 170, 120, 100, 80, '<p style="font-size: 16px;">C</p>'),
+    ];
+    const { metrics, warnings } = fitSlideLayout(els, CANVAS);
+
+    expect(metrics.residualOverlapPx).toBeGreaterThan(10);
+    expect(metrics.overlapElementIds).toEqual(expect.arrayContaining(['bridge', 'overlap']));
+    expect(warnings.some((w) => w.includes('residual overlap'))).toBe(true);
+  });
+
   test('F5 wide text collision: lower card in another column shifts below intro text', () => {
     const els: PPTElement[] = [
       shape('left', 60, 190, 360, 120),
@@ -358,8 +427,22 @@ describe('fitSlideLayout', () => {
     // With 500px of headroom above, pull-up should move it entirely into view.
     const els: PPTElement[] = [
       shape('bg', 60, 500, 420, 180),
-      text('hdr', 80, 520, 380, 52, '<p style="font-size: 20px;"><strong>Исторический контекст</strong></p>'),
-      text('body', 80, 572, 380, 103, '<p style="font-size: 18px;">• Пункт один</p><p style="font-size: 18px;">• Пункт два</p><p style="font-size: 18px;">• Пункт три</p>'),
+      text(
+        'hdr',
+        80,
+        520,
+        380,
+        52,
+        '<p style="font-size: 20px;"><strong>Исторический контекст</strong></p>',
+      ),
+      text(
+        'body',
+        80,
+        572,
+        380,
+        103,
+        '<p style="font-size: 18px;">• Пункт один</p><p style="font-size: 18px;">• Пункт два</p><p style="font-size: 18px;">• Пункт три</p>',
+      ),
     ];
     const { elements, warnings } = fitSlideLayout(els, CANVAS);
     const bg = elements.find((e) => e.id === 'bg') as PPTShapeElement;
@@ -418,9 +501,7 @@ describe('fitSlideLayout', () => {
 
   test('handles empty / single-element inputs', () => {
     expect(fitSlideLayout([], CANVAS).elements).toEqual([]);
-    const single: PPTElement[] = [
-      text('t', 0, 0, 300, 30, '<p style="font-size: 16px;">x</p>'),
-    ];
+    const single: PPTElement[] = [text('t', 0, 0, 300, 30, '<p style="font-size: 16px;">x</p>')];
     const { elements, warnings } = fitSlideLayout(single, CANVAS);
     expect(elements).toHaveLength(1);
     expect(warnings).toEqual([]);
@@ -519,24 +600,81 @@ describe('fitSlideLayout', () => {
     expect(underline.width).toBe(880);
   });
 
+  test('P4 contrast guard: white title below dark header is recolored', () => {
+    const title = text(
+      'title',
+      80,
+      98,
+      840,
+      70,
+      '<p style="font-size: 32px; color: #ffffff;"><strong>Проблема выравнивания</strong></p>',
+    );
+    title.defaultColor = '#ffffff';
+
+    const { elements, warnings } = fitSlideLayout(
+      [shape('header', 0, 0, 1000, 90, '#1e40af'), title],
+      CANVAS,
+    );
+    const fittedTitle = elements.find((e) => e.id === 'title') as PPTTextElement;
+
+    expect(fittedTitle.defaultColor).toBe('#1f2937');
+    expect(fittedTitle.content).toContain('color: #1f2937');
+    expect(warnings.some((w) => w.includes('low-contrast white text'))).toBe(true);
+  });
+
+  test('P4 contrast guard: white title inside dark header stays white', () => {
+    const title = text(
+      'title',
+      80,
+      20,
+      840,
+      50,
+      '<p style="font-size: 32px; color: #ffffff;"><strong>Проблема выравнивания</strong></p>',
+    );
+    title.defaultColor = '#ffffff';
+
+    const { elements, warnings } = fitSlideLayout(
+      [shape('header', 0, 0, 1000, 90, '#1e40af'), title],
+      CANVAS,
+    );
+    const fittedTitle = elements.find((e) => e.id === 'title') as PPTTextElement;
+
+    expect(fittedTitle.defaultColor).toBe('#ffffff');
+    expect(fittedTitle.content).toContain('color: #ffffff');
+    expect(warnings.some((w) => w.includes('low-contrast white text'))).toBe(false);
+  });
+
+  test('P4 contrast guard: non-white text is unchanged on light background', () => {
+    const title = text(
+      'title',
+      80,
+      98,
+      840,
+      70,
+      '<p style="font-size: 32px; color: #334155;"><strong>Проблема выравнивания</strong></p>',
+    );
+    title.defaultColor = '#334155';
+
+    const { elements } = fitSlideLayout([title], CANVAS);
+    const fittedTitle = elements.find((e) => e.id === 'title') as PPTTextElement;
+
+    expect(fittedTitle.defaultColor).toBe('#334155');
+    expect(fittedTitle.content).toContain('color: #334155');
+  });
+
   test('Б5 metrics — fitting slide returns zeroed metrics', () => {
     const els: PPTElement[] = [
       shape('bg', 60, 60, 880, 100),
-      text(
-        'title',
-        80,
-        80,
-        840,
-        40,
-        '<p style="font-size: 24px;">Заголовок</p>',
-      ),
+      text('title', 80, 80, 840, 40, '<p style="font-size: 24px;">Заголовок</p>'),
     ];
     const result = fitSlideLayout(els, CANVAS);
     expect(result.metrics).toBeDefined();
     expect(result.metrics.residualOverflowPx).toBe(0);
     expect(result.metrics.residualCollisionPx).toBe(0);
+    expect(result.metrics.residualOverlapPx).toBe(0);
     expect(result.metrics.residualClippedPx).toBe(0);
     expect(result.metrics.collisionElementIds).toEqual([]);
+    expect(result.metrics.overlapElementIds).toEqual([]);
     expect(result.metrics.droppedElementIds).toEqual([]);
     expect(result.metrics.overflowElementIds).toEqual([]);
   });
@@ -547,8 +685,10 @@ describe('fitSlideLayout', () => {
     expect(result.warnings).toEqual([]);
     expect(result.metrics.residualOverflowPx).toBe(0);
     expect(result.metrics.residualCollisionPx).toBe(0);
+    expect(result.metrics.residualOverlapPx).toBe(0);
     expect(result.metrics.residualClippedPx).toBe(0);
     expect(result.metrics.collisionElementIds).toEqual([]);
+    expect(result.metrics.overlapElementIds).toEqual([]);
     expect(result.metrics.droppedElementIds).toEqual([]);
     expect(result.metrics.overflowElementIds).toEqual([]);
   });
