@@ -468,6 +468,7 @@ interface GenerateSlideOptions {
 /** Б5 retry triggers — anything beyond ~20 px or a dropped element. */
 const LAYOUT_RETRY_OVERFLOW_PX = 20;
 const LAYOUT_RETRY_CLIP_PX = 20;
+const LAYOUT_RETRY_COLLISION_PX = 10;
 
 /**
  * Generate slide content
@@ -635,13 +636,19 @@ async function generateSlideContent(
   const attempt = options?.retryAttempt ?? 0;
   const needsRetry =
     fit.metrics.residualOverflowPx > LAYOUT_RETRY_OVERFLOW_PX ||
+    fit.metrics.residualCollisionPx > LAYOUT_RETRY_COLLISION_PX ||
     fit.metrics.residualClippedPx > LAYOUT_RETRY_CLIP_PX ||
     fit.metrics.droppedElementIds.length > 0;
   if (needsRetry && attempt < 1) {
+    const collisionHint =
+      fit.metrics.residualCollisionPx > LAYOUT_RETRY_COLLISION_PX
+        ? ` Columns conflict with intro text (${fit.metrics.residualCollisionPx}px); shorten intro text or use a simpler card structure.`
+        : '';
     const hint =
       `Previous layout attempt failed: residualOverflow=${fit.metrics.residualOverflowPx}px, ` +
+      `collision=${fit.metrics.residualCollisionPx}px, ` +
       `clipped=${fit.metrics.residualClippedPx}px, dropped=${fit.metrics.droppedElementIds.length}. ` +
-      `Reduce content density.`;
+      `Reduce content density.${collisionHint}`;
     log.warn(`[${outline.title}] retrying slide generation: ${hint}`);
     return generateSlideContent(
       outline,

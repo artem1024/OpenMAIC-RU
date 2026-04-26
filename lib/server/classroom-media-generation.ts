@@ -7,6 +7,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import sharp from 'sharp';
 import { createLogger } from '@/lib/logger';
 import { CLASSROOMS_DIR } from '@/lib/server/classroom-storage';
 import { generateImage } from '@/lib/media/image-providers';
@@ -37,6 +38,13 @@ import { splitLongSpeechActions } from '@/lib/audio/tts-utils';
 
 const log = createLogger('ClassroomMedia');
 
+export interface RemovedMedia {
+  sceneId: string;
+  elementId: string;
+  type: 'image' | 'video';
+  src: string;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -50,6 +58,15 @@ const DOWNLOAD_MAX_SIZE = 100 * 1024 * 1024; // 100 MB
 
 const MEDIA_GEN_ATTEMPTS = 3;
 const MEDIA_GEN_BASE_DELAY_MS = 1500;
+const GENERATED_IMAGE_PREFIX = 'gen_img_';
+const CANVAS_HEIGHT = 562.5;
+const IMAGE_BOTTOM_MARGIN = 5;
+const IMAGE_ELEMENT_GAP = 10;
+const IMAGE_ASPECT_DRIFT_THRESHOLD = 0.15;
+const VISUAL_OBJECT_RE =
+  /(схем|картин|изображен|диаграмм|иллюстрац|визуал|график|diagram|image|picture|visual)/iu;
+const VISUAL_CUE_RE =
+  /(посмотр|смотрим|взглян|обратит[еь]?\s+вниман|на\s+экране|на\s+слайде|видите|look|see)/iu;
 
 async function withRetries<T>(
   label: string,
@@ -86,6 +103,39 @@ async function downloadToBuffer(url: string): Promise<Buffer> {
 function mediaServingUrl(_baseUrl: string, classroomId: string, subPath: string): string {
   // Use relative URL so it works both in direct access and via proxy/iframe
   return `/api/classroom-media/${classroomId}/${subPath}`;
+}
+
+function elementBounds(el: { left?: number; top?: number; width?: number; height?: number }) {
+  if (
+    typeof el.left !== 'number' ||
+    typeof el.top !== 'number' ||
+    typeof el.width !== 'number' ||
+    typeof el.height !== 'number'
+  ) {
+    return null;
+  }
+  return {
+    left: el.left,
+    top: el.top,
+    right: el.left + el.width,
+    bottom: el.top + el.height,
+    width: el.width,
+    height: el.height,
+  };
+}
+
+function xOverlapPx(
+  a: { left: number; right: number },
+  b: { left: number; right: number },
+): number {
+  return Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
+}
+
+function generatedImageFilename(src: string, classroomId: string): string | null {
+  const prefix = `/api/classroom-media/${classroomId}/media/`;
+  if (!src.startsWith(prefix)) return null;
+  const filename = src.slice(prefix.length);
+  return filename.startsWith(GENERATED_IMAGE_PREFIX) ? filename : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,13 +277,102 @@ export function replaceMediaPlaceholders(scenes: Scene[], mediaMap: Record<strin
 }
 
 /**
+ * Generated image providers may return a different natural ratio than the box
+ * proposed by the LLM. Never stretch the bitmap: contain it inside the current
+ * slot and the available vertical room until the next lower overlapping
+ * element/canvas bottom.
+ */
+export async function correctGeneratedImageAspectRatios(
+  scenes: Scene[],
+  classroomId: string,
+  classroomsDir = CLASSROOMS_DIR,
+): Promise<number> {
+  let corrected = 0;
+  const mediaDir = path.join(classroomsDir, classroomId, 'media');
+
+  for (const scene of scenes) {
+    if (scene.type !== 'slide') continue;
+    const canvas = (
+      scene.content as {
+        canvas?: {
+          elements?: Array<{
+            id: string;
+            src?: string;
+            type?: string;
+            left?: number;
+            top?: number;
+            width?: number;
+            height?: number;
+          }>;
+          viewportRatio?: number;
+          viewportSize?: number;
+        };
+      }
+    )?.canvas;
+    if (!canvas?.elements) continue;
+    const canvasHeight =
+      typeof canvas.viewportSize === 'number' && typeof canvas.viewportRatio === 'number'
+        ? canvas.viewportSize * canvas.viewportRatio
+        : CANVAS_HEIGHT;
+
+    for (const el of canvas.elements) {
+      if (el.type !== 'image' || typeof el.src !== 'string') continue;
+      const filename = generatedImageFilename(el.src, classroomId);
+      const bounds = elementBounds(el);
+      if (!filename || !bounds) continue;
+
+      let metadata: sharp.Metadata;
+      try {
+        metadata = await sharp(path.join(mediaDir, filename)).metadata();
+      } catch (err) {
+        log.warn(`Unable to read generated image metadata for ${filename}:`, err);
+        continue;
+      }
+      if (!metadata.width || !metadata.height) continue;
+
+      const naturalRatio = metadata.width / metadata.height;
+      const sceneRatio = bounds.width / bounds.height;
+      const drift = Math.abs(sceneRatio - naturalRatio) / naturalRatio;
+      if (drift <= IMAGE_ASPECT_DRIFT_THRESHOLD) continue;
+
+      let nextTop = canvasHeight - IMAGE_BOTTOM_MARGIN;
+      for (const other of canvas.elements) {
+        if (other.id === el.id) continue;
+        const otherBounds = elementBounds(other);
+        if (!otherBounds || otherBounds.top <= bounds.top) continue;
+        if (xOverlapPx(bounds, otherBounds) <= 0) continue;
+        nextTop = Math.min(nextTop, otherBounds.top - IMAGE_ELEMENT_GAP);
+      }
+      const availableHeight = Math.max(20, nextTop - bounds.top);
+      const heightAtCurrentWidth = bounds.width / naturalRatio;
+      if (heightAtCurrentWidth <= availableHeight) {
+        el.height = heightAtCurrentWidth;
+      } else {
+        const newWidth = availableHeight * naturalRatio;
+        el.left = bounds.left + (bounds.width - newWidth) / 2;
+        el.width = newWidth;
+        el.height = availableHeight;
+      }
+      corrected++;
+      log.info(
+        `Corrected generated image aspect ratio for ${el.id} in scene ${scene.id}: drift=${drift.toFixed(
+          2,
+        )}`,
+      );
+    }
+  }
+
+  return corrected;
+}
+
+/**
  * Remove image/video canvas elements whose `src` is still a `gen_img_*` / `gen_vid_*`
  * placeholder after replacement — i.e. generation failed and no file was produced.
  * Leaving the placeholder in the JSON causes the player to render a blank grey area
  * with a broken-image icon. Dropping the element keeps the rest of the slide clean.
  */
-export function removeUnresolvedMediaPlaceholders(scenes: Scene[]): number {
-  let removed = 0;
+export function removeUnresolvedMediaPlaceholders(scenes: Scene[]): RemovedMedia[] {
+  const removed: RemovedMedia[] = [];
   for (const scene of scenes) {
     if (scene.type !== 'slide') continue;
     const canvas = (
@@ -242,13 +381,19 @@ export function removeUnresolvedMediaPlaceholders(scenes: Scene[]): number {
       }
     )?.canvas;
     if (!canvas?.elements) continue;
-    const before = canvas.elements.length;
+    const sceneRemoved: RemovedMedia[] = [];
     canvas.elements = canvas.elements.filter((el) => {
       if (
         (el.type === 'image' || el.type === 'video') &&
         typeof el.src === 'string' &&
         isMediaPlaceholder(el.src)
       ) {
+        sceneRemoved.push({
+          sceneId: scene.id,
+          elementId: el.id,
+          type: el.type,
+          src: el.src,
+        });
         log.warn(
           `Removing unresolved ${el.type} element ${el.id} (src=${el.src}) from scene ${scene.id}`,
         );
@@ -256,9 +401,75 @@ export function removeUnresolvedMediaPlaceholders(scenes: Scene[]): number {
       }
       return true;
     });
-    removed += before - canvas.elements.length;
+    if (sceneRemoved.length === 0) continue;
+
+    removed.push(...sceneRemoved);
+    const removedIds = new Set(sceneRemoved.map((media) => media.elementId));
+    if (scene.actions) {
+      const beforeActions = scene.actions.length;
+      scene.actions = scene.actions.filter((action) => {
+        if (action.type === 'speech') return true;
+        const elementId = 'elementId' in action ? action.elementId : undefined;
+        return !elementId || !removedIds.has(elementId);
+      });
+      const removedActions = beforeActions - scene.actions.length;
+      if (removedActions > 0) {
+        log.warn(
+          `Removed ${removedActions} dangling action(s) for unresolved media in scene ${scene.id}`,
+        );
+      }
+    }
   }
   return removed;
+}
+
+function splitSentences(text: string): string[] {
+  return text.match(/[^.!?…]+[.!?…]*/g)?.map((s) => s.trim()).filter(Boolean) ?? [text];
+}
+
+function isRemovedMediaVisualReference(sentence: string): boolean {
+  return VISUAL_OBJECT_RE.test(sentence) && VISUAL_CUE_RE.test(sentence);
+}
+
+/**
+ * If media failed and its slide actions were removed, speech may still say
+ * "look at the diagram". Do a deterministic pre-TTS cleanup for only those
+ * scenes. This deliberately does not rewrite concepts, numbers, or terms.
+ */
+export function removeSpeechVisualReferencesForRemovedMedia(
+  scenes: Scene[],
+  removedMedia: RemovedMedia[],
+): number {
+  if (removedMedia.length === 0) return 0;
+  const affectedSceneIds = new Set(removedMedia.map((media) => media.sceneId));
+  let changed = 0;
+
+  for (const scene of scenes) {
+    if (!affectedSceneIds.has(scene.id) || !scene.actions) continue;
+    const nextActions: NonNullable<Scene['actions']> = [];
+    for (const action of scene.actions) {
+      if (action.type !== 'speech') {
+        nextActions.push(action);
+        continue;
+      }
+
+      const sentences = splitSentences(action.text);
+      const kept = sentences.filter((sentence) => !isRemovedMediaVisualReference(sentence));
+      if (kept.length === sentences.length) {
+        nextActions.push(action);
+        continue;
+      }
+
+      const nextText = kept.join(' ').trim();
+      changed++;
+      if (nextText.length > 0) {
+        nextActions.push({ ...action, text: nextText });
+      }
+    }
+    scene.actions = nextActions;
+  }
+
+  return changed;
 }
 
 // ---------------------------------------------------------------------------

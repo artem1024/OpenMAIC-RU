@@ -15,7 +15,12 @@
  *   6. Drop cards that start entirely below the viewport (AI placed them there).
  *   7. Warn about any residual overflow.
  */
-import type { PPTElement, PPTTextElement, PPTShapeElement } from '@/lib/types/slides';
+import type {
+  PPTElement,
+  PPTLatexElement,
+  PPTTextElement,
+  PPTShapeElement,
+} from '@/lib/types/slides';
 
 /**
  * Subset of PPTElement that has a `height` property (everything except
@@ -57,8 +62,12 @@ const BBOX_TOL = 3;
 export interface FitMetrics {
   /** Max element bottom over canvas.height, 0 when slide fits. */
   residualOverflowPx: number;
+  /** Max unresolved geometric collision after attempted reflow, 0 when none remain. */
+  residualCollisionPx: number;
   /** Max (required - height) across text elements, 0 when nothing clipped. */
   residualClippedPx: number;
+  /** IDs involved in unresolved collisions that should trigger a retry. */
+  collisionElementIds: string[];
   /** IDs that Step 6 dropped because they sat entirely below the viewport. */
   droppedElementIds: string[];
   /** IDs whose bottom still exceeds canvas.height after the full pipeline. */
@@ -73,7 +82,9 @@ export interface FitResult {
 
 const EMPTY_METRICS: FitMetrics = {
   residualOverflowPx: 0,
+  residualCollisionPx: 0,
   residualClippedPx: 0,
+  collisionElementIds: [],
   droppedElementIds: [],
   overflowElementIds: [],
 };
@@ -126,8 +137,28 @@ export function measureTextHeight(
 function isText(el: PPTElement): el is PPTTextElement {
   return el.type === 'text';
 }
+function isLatex(el: PPTElement): el is PPTLatexElement {
+  return el.type === 'latex';
+}
 function isShape(el: PPTElement): el is PPTShapeElement {
   return el.type === 'shape';
+}
+
+function isFlowMember(el: PPTElement): el is PPTTextElement | PPTLatexElement {
+  return isText(el) || isLatex(el);
+}
+
+function cardKey(card: Card): string {
+  return card.bg?.id ?? card.members[0].id;
+}
+
+function overlapsX(a: { left: number; right: number }, b: { left: number; right: number }): boolean {
+  return a.left < b.right && b.left < a.right;
+}
+
+interface CollisionReport {
+  residualCollisionPx: number;
+  collisionElementIds: Set<string>;
 }
 
 function bboxContains(outer: Sized, inner: Sized, tol = BBOX_TOL): boolean {
@@ -308,12 +339,13 @@ function fitCard(card: Card): number {
     if (required > m.height) m.height = required;
   }
 
-  // Sort texts top-to-bottom, fix vertical overlaps among them.
-  const texts = card.members.filter(isText).sort((a, b) => a.top - b.top);
-  for (let i = 1; i < texts.length; i++) {
-    const prev = texts[i - 1];
-    const cur = texts[i];
-    const minTop = prev.top + prev.height; // no extra gap — text elements already include leading
+  // Sort text/latex flow-members top-to-bottom and fix vertical overlaps.
+  // Text can grow above; latex is rigid but must move when text expands.
+  const flowMembers = card.members.filter(isFlowMember).sort((a, b) => a.top - b.top);
+  for (let i = 1; i < flowMembers.length; i++) {
+    const prev = flowMembers[i - 1];
+    const cur = flowMembers[i];
+    const minTop = prev.top + prev.height; // elements already include their own leading/padding
     if (cur.top < minTop) cur.top = minTop;
   }
 
@@ -366,6 +398,76 @@ function shiftCard(card: Card, dy: number) {
   }
   card.top += dy;
   card.bottom += dy;
+}
+
+function shiftCardAndFollowing(columns: Card[][], target: Card, dy: number): boolean {
+  const col = columns.find((candidate) => candidate.includes(target));
+  if (!col) {
+    shiftCard(target, dy);
+    return true;
+  }
+  const start = col.indexOf(target);
+  for (let i = start; i < col.length; i++) {
+    shiftCard(col[i], dy);
+  }
+  return true;
+}
+
+function affectedCardsForShift(columns: Card[][], target: Card): Card[] {
+  const col = columns.find((candidate) => candidate.includes(target));
+  if (!col) return [target];
+  const start = col.indexOf(target);
+  return col.slice(start);
+}
+
+/**
+ * Wide intro text is often emitted as a singleton text block spanning most of
+ * the canvas, followed by cards below it. Column reflow only sees card columns,
+ * so it can miss a cross-column intro→card collision. Resolve these collisions
+ * late in the pipeline; if shifting would push a card below the safe viewport,
+ * keep geometry stable and return metrics so the Б5 retry hook can simplify
+ * the scene instead.
+ */
+function resolveWideTextCollisions(
+  cards: Card[],
+  columns: Card[][],
+  canvasWidth: number,
+  safeBottom: number,
+): CollisionReport {
+  const collisionElementIds = new Set<string>();
+  let residualCollisionPx = 0;
+  const wideTextCards = cards.filter((card) => {
+    if (card.bg || card.members.length !== 1) return false;
+    const member = card.members[0];
+    return isText(member) && member.width >= canvasWidth * 0.6;
+  });
+
+  for (const textCard of wideTextCards) {
+    const wideText = textCard.members[0] as PPTTextElement;
+    const neededTop = wideText.top + wideText.height + CARD_GAP;
+    const wideBounds = { left: wideText.left, right: wideText.left + wideText.width };
+
+    for (const card of cards) {
+      if (card === textCard) continue;
+      if (card.top <= wideText.top) continue;
+      if (!overlapsX(wideBounds, card)) continue;
+      if (card.top >= neededTop || card.bottom <= wideText.top) continue;
+
+      const dy = neededTop - card.top;
+      const affected = affectedCardsForShift(columns, card);
+      const lastBottomAfterShift = Math.max(...affected.map((affectedCard) => affectedCard.bottom + dy));
+      if (lastBottomAfterShift <= safeBottom + BBOX_TOL) {
+        shiftCardAndFollowing(columns, card, dy);
+        continue;
+      }
+
+      residualCollisionPx = Math.max(residualCollisionPx, dy);
+      collisionElementIds.add(wideText.id);
+      collisionElementIds.add(cardKey(card));
+    }
+  }
+
+  return { residualCollisionPx, collisionElementIds };
 }
 
 /**
@@ -497,6 +599,18 @@ export function fitSlideLayout(
     }
   }
 
+  // Step 5b: resolve cross-column collisions where a wide singleton intro text
+  // spans above lower cards. If there is no safe room to move the lower cards,
+  // report residualCollisionPx so the upstream retry hook can simplify content.
+  const collisionReport = resolveWideTextCollisions(cards, columns, canvas.width, safeBottom);
+  if (collisionReport.residualCollisionPx > 0) {
+    warnings.push(
+      `slide-layout-fit: residual collision — wide text overlaps lower card(s) by ${collisionReport.residualCollisionPx.toFixed(
+        1,
+      )}px`,
+    );
+  }
+
   // Step 6: drop cards that start entirely below the safe viewport — they are
   // invisible by definition and only produce warnings. AI sometimes stacks an
   // extra block far below when it runs out of composition ideas.
@@ -551,7 +665,9 @@ export function fitSlideLayout(
   }
   const metrics: FitMetrics = {
     residualOverflowPx: Math.max(0, maxBottom - canvas.height),
+    residualCollisionPx: collisionReport.residualCollisionPx,
     residualClippedPx,
+    collisionElementIds: Array.from(collisionReport.collisionElementIds),
     droppedElementIds: Array.from(dropIds),
     overflowElementIds,
   };

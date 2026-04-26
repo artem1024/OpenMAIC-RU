@@ -7,6 +7,7 @@ import { describe, test, expect } from 'vitest';
 import { fitSlideLayout, measureTextHeight } from '../slide-layout-fit';
 import type {
   PPTElement,
+  PPTLatexElement,
   PPTShapeElement,
   PPTTextElement,
 } from '@/lib/types/slides';
@@ -55,6 +56,26 @@ function text(
     content,
     defaultFontName: 'Microsoft YaHei',
     defaultColor: '#333333',
+  };
+}
+
+function latex(
+  id: string,
+  left: number,
+  top: number,
+  width: number,
+  height: number,
+): PPTLatexElement {
+  return {
+    id,
+    type: 'latex',
+    left,
+    top,
+    width,
+    height,
+    rotate: 0,
+    latex: 'E = mc^2',
+    html: '<span>E = mc^2</span>',
   };
 }
 
@@ -229,6 +250,86 @@ describe('fitSlideLayout', () => {
     const d = elements.find((e) => e.id === 'd') as PPTTextElement;
     // d.top must be >= t.top + t.height (no overlap)
     expect(d.top).toBeGreaterThanOrEqual(t.top + t.height);
+  });
+
+  test('F6 latex flow: growing text pushes formula down and grows shape', () => {
+    const els: PPTElement[] = [
+      shape('bg', 60, 100, 420, 120),
+      text(
+        'body',
+        80,
+        120,
+        380,
+        40,
+        '<p style="font-size: 18px;">' +
+          'Градиент показывает направление наибольшего роста функции, поэтому при обучении мы движемся в противоположную сторону, уменьшая ошибку модели. '.repeat(
+            2,
+          ) +
+          '</p>',
+      ),
+      latex('formula', 80, 170, 380, 40),
+    ];
+    const { elements } = fitSlideLayout(els, CANVAS);
+    const bg = elements.find((e) => e.id === 'bg') as PPTShapeElement;
+    const body = elements.find((e) => e.id === 'body') as PPTTextElement;
+    const formula = elements.find((e) => e.id === 'formula') as PPTLatexElement;
+
+    expect(body.height).toBeGreaterThan(40);
+    expect(formula.top).toBeGreaterThanOrEqual(body.top + body.height);
+    expect(bg.height).toBeGreaterThan(120);
+    expect(bg.top + bg.height).toBeGreaterThanOrEqual(formula.top + formula.height);
+  });
+
+  test('F6 latex flow: formula outside the card is not moved by card text', () => {
+    const els: PPTElement[] = [
+      shape('bg', 60, 100, 420, 120),
+      text(
+        'body',
+        80,
+        120,
+        380,
+        40,
+        '<p style="font-size: 18px;">' +
+          'Длинное описание внутри карточки должно растянуть фон, но не должно влиять на формулу в соседней области слайда. '.repeat(
+            2,
+          ) +
+          '</p>',
+      ),
+      latex('formula', 600, 170, 300, 40),
+    ];
+    const { elements } = fitSlideLayout(els, CANVAS);
+    const formula = elements.find((e) => e.id === 'formula') as PPTLatexElement;
+    expect(formula.top).toBe(170);
+  });
+
+  test('F5 wide text collision: lower card in another column shifts below intro text', () => {
+    const els: PPTElement[] = [
+      shape('left', 60, 190, 360, 120),
+      shape('right', 650, 190, 280, 120),
+      text('intro', 150, 100, 700, 120, '<p style="font-size: 18px;">Краткое вступление.</p>'),
+    ];
+    const { elements, metrics } = fitSlideLayout(els, CANVAS);
+    const intro = elements.find((e) => e.id === 'intro') as PPTTextElement;
+    const right = elements.find((e) => e.id === 'right') as PPTShapeElement;
+
+    expect(right.top).toBeGreaterThanOrEqual(intro.top + intro.height + 10);
+    expect(metrics.residualCollisionPx).toBe(0);
+    expect(metrics.collisionElementIds).toEqual([]);
+  });
+
+  test('F5 wide text collision: impossible shift records retry metrics', () => {
+    const els: PPTElement[] = [
+      shape('left', 60, 270, 360, 100),
+      shape('right', 650, 270, 280, 285),
+      text('intro', 150, 100, 700, 190, '<p style="font-size: 18px;">Краткое вступление.</p>'),
+    ];
+    const { elements, metrics, warnings } = fitSlideLayout(els, CANVAS);
+    const right = elements.find((e) => e.id === 'right') as PPTShapeElement;
+
+    expect(right.top).toBe(270);
+    expect(metrics.residualCollisionPx).toBeGreaterThan(10);
+    expect(metrics.collisionElementIds).toEqual(expect.arrayContaining(['intro', 'right']));
+    expect(warnings.some((w) => w.includes('residual collision'))).toBe(true);
   });
 
   test('warns when overflow cannot be fixed by pull-up or squeeze', () => {
@@ -433,7 +534,9 @@ describe('fitSlideLayout', () => {
     const result = fitSlideLayout(els, CANVAS);
     expect(result.metrics).toBeDefined();
     expect(result.metrics.residualOverflowPx).toBe(0);
+    expect(result.metrics.residualCollisionPx).toBe(0);
     expect(result.metrics.residualClippedPx).toBe(0);
+    expect(result.metrics.collisionElementIds).toEqual([]);
     expect(result.metrics.droppedElementIds).toEqual([]);
     expect(result.metrics.overflowElementIds).toEqual([]);
   });
@@ -443,7 +546,9 @@ describe('fitSlideLayout', () => {
     expect(result.elements).toEqual([]);
     expect(result.warnings).toEqual([]);
     expect(result.metrics.residualOverflowPx).toBe(0);
+    expect(result.metrics.residualCollisionPx).toBe(0);
     expect(result.metrics.residualClippedPx).toBe(0);
+    expect(result.metrics.collisionElementIds).toEqual([]);
     expect(result.metrics.droppedElementIds).toEqual([]);
     expect(result.metrics.overflowElementIds).toEqual([]);
   });

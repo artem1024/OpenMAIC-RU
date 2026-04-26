@@ -22,12 +22,15 @@ import { resolveModel } from '@/lib/server/resolve-model';
 import { searchWithTavily, formatSearchResultsAsContext } from '@/lib/web-search/tavily';
 import { persistClassroom } from '@/lib/server/classroom-storage';
 import {
+  correctGeneratedImageAspectRatios,
   generateMediaForClassroom,
+  removeSpeechVisualReferencesForRemovedMedia,
   replaceMediaPlaceholders,
   removeUnresolvedMediaPlaceholders,
   generateTTSForClassroom,
+  type RemovedMedia,
 } from '@/lib/server/classroom-media-generation';
-import type { UserRequirements } from '@/lib/types/generation';
+import type { SceneOutline, UserRequirements } from '@/lib/types/generation';
 import type { Scene, Stage } from '@/lib/types/stage';
 
 const log = createLogger('Classroom');
@@ -96,6 +99,59 @@ function createInMemoryStore(stage: Stage): StageStore {
       };
     },
   };
+}
+
+async function regenerateScenesWithoutRemovedMedia(
+  scenes: Scene[],
+  removedMedia: RemovedMedia[],
+  outlineBySceneId: Map<string, SceneOutline>,
+  aiCall: AICallFn,
+  agents?: AgentInfo[],
+): Promise<number> {
+  if (removedMedia.length === 0) return 0;
+  const affectedSceneIds = new Set(removedMedia.map((media) => media.sceneId));
+  let rewritten = 0;
+
+  for (const scene of scenes) {
+    if (scene.type !== 'slide' || scene.content.type !== 'slide') continue;
+    if (!affectedSceneIds.has(scene.id)) continue;
+
+    const outline = outlineBySceneId.get(scene.id);
+    if (!outline || outline.type !== 'slide') continue;
+
+    const failedIds = removedMedia
+      .filter((media) => media.sceneId === scene.id)
+      .map((media) => media.elementId)
+      .join(', ');
+    const fallbackOutline: SceneOutline = {
+      ...outline,
+      mediaGenerations: [],
+    };
+    log.warn(`Regenerating scene "${scene.title}" without failed media (${failedIds})`);
+
+    const content = await generateSceneContent(
+      fallbackOutline,
+      aiCall,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      agents,
+    );
+    if (!content || !('elements' in content)) {
+      log.warn(`Media fallback failed for scene "${scene.title}" — keeping cleaned original`);
+      continue;
+    }
+
+    const actions = await generateSceneActions(fallbackOutline, content, aiCall, undefined, agents);
+    scene.content.canvas.elements = content.elements;
+    scene.content.canvas.background = content.background;
+    scene.actions = actions;
+    rewritten++;
+  }
+
+  return rewritten;
 }
 
 function normalizeLanguage(language?: string): 'zh-CN' | 'en-US' | 'ru-RU' {
@@ -311,6 +367,7 @@ export async function generateClassroom(
 
   log.info('Stage 2: Generating scene content and actions...');
   let generatedScenes = 0;
+  const outlineBySceneId = new Map<string, SceneOutline>();
 
   for (const [index, outline] of outlines.entries()) {
     const safeOutline = applyOutlineFallbacks(outline, true);
@@ -347,6 +404,7 @@ export async function generateClassroom(
       log.warn(`Skipping scene "${safeOutline.title}" — scene creation failed`);
       continue;
     }
+    outlineBySceneId.set(sceneId, safeOutline);
 
     generatedScenes += 1;
     const progressEnd = 30 + Math.floor(((index + 1) / Math.max(outlines.length, 1)) * 60);
@@ -379,9 +437,19 @@ export async function generateClassroom(
     try {
       const mediaMap = await generateMediaForClassroom(outlines, stageId, options.baseUrl);
       replaceMediaPlaceholders(scenes, mediaMap);
-      const removed = removeUnresolvedMediaPlaceholders(scenes);
+      const aspectCorrections = await correctGeneratedImageAspectRatios(scenes, stageId);
+      const removedMedia = removeUnresolvedMediaPlaceholders(scenes);
+      const mediaFallbackRewrites = await regenerateScenesWithoutRemovedMedia(
+        scenes,
+        removedMedia,
+        outlineBySceneId,
+        aiCall,
+        agents,
+      );
+      const speechCleanups = removeSpeechVisualReferencesForRemovedMedia(scenes, removedMedia);
+      const removed = removedMedia.length;
       log.info(
-        `Media generation complete: ${Object.keys(mediaMap).length} files${removed > 0 ? `, ${removed} unresolved placeholder(s) removed` : ''}`,
+        `Media generation complete: ${Object.keys(mediaMap).length} files${removed > 0 ? `, ${removed} unresolved placeholder(s) removed` : ''}${aspectCorrections > 0 ? `, ${aspectCorrections} image aspect correction(s)` : ''}${mediaFallbackRewrites > 0 ? `, ${mediaFallbackRewrites} media fallback rewrite(s)` : ''}${speechCleanups > 0 ? `, ${speechCleanups} speech visual reference cleanup(s)` : ''}`,
       );
     } catch (err) {
       log.warn('Media generation phase failed, continuing:', err);
