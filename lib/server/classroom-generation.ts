@@ -45,6 +45,18 @@ export interface GenerateClassroomInput {
   enableTTS?: boolean;
   agentMode?: 'default' | 'generate';
   modelString?: string;
+  generationProfile?: Partial<GenerationProfile>;
+}
+
+export interface GenerationProfile {
+  name: string;
+  minDurationMin: number;
+  maxDurationMin: number;
+  scenesPerMinute: number;
+  minScenes: number;
+  maxScenes: number;
+  maxInteractive: number;
+  maxVideos: number;
 }
 
 export type ClassroomGenerationStep =
@@ -90,7 +102,7 @@ export interface GenerationTimings {
 }
 
 export interface GenerationConfigSnapshot {
-  /** Профиль генерации (fast/standard/quality). Phase 1 — пока 'standard'. */
+  /** Профиль генерации урока (short/standard/deep). */
   profile: string;
   /** Включён ли параллельный режим. Phase 1 — пока false. */
   parallel_enabled: boolean;
@@ -112,6 +124,47 @@ export interface GenerateClassroomResult {
   timings?: GenerationTimings;
   /** Снимок конфигурации генерации, попадает в webhook телеметрии. */
   config?: GenerationConfigSnapshot;
+}
+
+const DEFAULT_GENERATION_PROFILE: GenerationProfile = {
+  name: 'standard',
+  // Backwards-compatible defaults approximate the pre-profile prompt.
+  minDurationMin: 20,
+  maxDurationMin: 30,
+  scenesPerMinute: 1.5,
+  minScenes: 12,
+  maxScenes: 35,
+  maxInteractive: 2,
+  maxVideos: 3,
+};
+
+function numberOrDefault(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+function normalizeGenerationProfile(profile?: Partial<GenerationProfile>): GenerationProfile {
+  const defaults = DEFAULT_GENERATION_PROFILE;
+  return {
+    name: typeof profile?.name === 'string' && profile.name.trim() ? profile.name.trim() : defaults.name,
+    minDurationMin: numberOrDefault(profile?.minDurationMin, defaults.minDurationMin),
+    maxDurationMin: numberOrDefault(profile?.maxDurationMin, defaults.maxDurationMin),
+    scenesPerMinute: numberOrDefault(profile?.scenesPerMinute, defaults.scenesPerMinute),
+    minScenes: numberOrDefault(profile?.minScenes, defaults.minScenes),
+    maxScenes: numberOrDefault(profile?.maxScenes, defaults.maxScenes),
+    maxInteractive: numberOrDefault(profile?.maxInteractive, defaults.maxInteractive),
+    maxVideos: numberOrDefault(profile?.maxVideos, defaults.maxVideos),
+  };
+}
+
+function applyGenerationProfilePlaceholders(prompt: string, profile: GenerationProfile): string {
+  return prompt
+    .replaceAll('{{minDurationMin}}', String(profile.minDurationMin))
+    .replaceAll('{{maxDurationMin}}', String(profile.maxDurationMin))
+    .replaceAll('{{scenesPerMinute}}', String(profile.scenesPerMinute))
+    .replaceAll('{{minScenes}}', String(profile.minScenes))
+    .replaceAll('{{maxScenes}}', String(profile.maxScenes))
+    .replaceAll('{{maxInteractive}}', String(profile.maxInteractive))
+    .replaceAll('{{maxVideos}}', String(profile.maxVideos));
 }
 
 function createInMemoryStore(stage: Stage): StageStore {
@@ -299,13 +352,21 @@ export async function generateClassroom(
     );
   }
 
+  const generationProfile = normalizeGenerationProfile(input.generationProfile);
+
   const aiCall: AICallFn = async (systemPrompt, userPrompt, _images) => {
     const result = await callLLM(
       {
         model: languageModel,
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
+          {
+            role: 'system',
+            content: applyGenerationProfilePlaceholders(systemPrompt, generationProfile),
+          },
+          {
+            role: 'user',
+            content: applyGenerationProfilePlaceholders(userPrompt, generationProfile),
+          },
         ],
         maxOutputTokens: modelInfo?.outputWindow,
       },
@@ -585,7 +646,7 @@ export async function generateClassroom(
   };
 
   const config: GenerationConfigSnapshot = {
-    profile: 'standard',
+    profile: generationProfile.name,
     parallel_enabled: false,
     tts_provider: ttsProviderUsed ?? (input.enableTTS ? 'gemini-tts' : null),
   };

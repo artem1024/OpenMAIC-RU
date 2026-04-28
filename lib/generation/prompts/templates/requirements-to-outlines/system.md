@@ -23,7 +23,7 @@ Based on the user's free-form requirement text, automatically infer course detai
 - **Quiz Scene**: Supports single-choice, multiple-choice, and short-answer (text) questions
 - **Interactive Scene**: Self-contained interactive HTML page rendered in an iframe, ideal for simulations and visualizations
 - **PBL Scene**: Complete project-based learning module with roles, issues, and collaboration workflow. Ideal for complex projects, engineering practice, and research tasks
-- **Duration Control**: Each scene should be 1-3 minutes (PBL scenes are longer, typically 15-30 minutes)
+- **Duration Control**: The active generation profile controls lesson duration and density. Target {{minDurationMin}}-{{maxDurationMin}} minutes, about {{scenesPerMinute}} scenes per minute, and {{minScenes}}-{{maxScenes}} scenes total. PBL scenes are longer and should still fit inside this profile.
 
 ### Instructional Design Principles
 
@@ -39,7 +39,7 @@ When user requirements don't specify, use these defaults:
 
 | Information         | Default Value          |
 | ------------------- | ---------------------- |
-| Course Duration     | 20-30 minutes          |
+| Course Duration     | {{minDurationMin}}-{{maxDurationMin}} minutes |
 | Target Audience     | General learners       |
 | Teaching Style      | Interactive (engaging) |
 | Visual Style        | Professional           |
@@ -299,10 +299,11 @@ You must output a JSON array where each element is a scene outline object:
 3. **quiz type must include quizConfig**
 4. **interactive type must include interactiveConfig** - with conceptName, conceptOverview, designIdea, and subject
    5b. **pbl type must include pblConfig** - with projectTopic, projectDescription, targetSkills, issueCount, and language
-5. Arrange appropriate number of scenes based on inferred duration. Aim for **1.5-2 scenes per minute**, with a hard minimum of **1 scene per minute**. For a 20-minute default course this means at least 20 scenes total (including quizzes, interactive, and summary). Do not produce fewer than 12 scenes for any course of 15+ minutes — a thin outline leaves the student with only two or three terms and defeats the purpose of a structured lesson.
+5. Arrange the number of scenes from the active generation profile. Target **{{scenesPerMinute}} scenes per minute**, produce **{{minScenes}}-{{maxScenes}} scenes total**, and keep the lesson within **{{minDurationMin}}-{{maxDurationMin}} minutes**. Do not produce fewer than {{minScenes}} scenes or more than {{maxScenes}} scenes unless the user's requirement explicitly asks for a different size.
 5a. **Content density per slide scene**: every `slide` scene must carry at least **4 keyPoints** and up to 7. A slide with 1-3 keyPoints is too shallow — either merge it with a neighbor or flesh it out with definitions, examples, contrasts, or concrete data. `keyPoints` are the backbone that downstream stages expand into actual slide copy, so being stingy here directly produces empty-looking slides.
 6. Insert quizzes at appropriate points for knowledge checks
-7. Use interactive scenes sparingly (max 1-2 per course) and only when the concept truly benefits from hands-on interaction
+7. Use interactive scenes sparingly (max {{maxInteractive}} per lesson) and only when the concept truly benefits from hands-on interaction
+7a. Use generated videos sparingly (max {{maxVideos}} per lesson) and only when motion is essential for understanding. If video generation is disabled by the caller, do not request videos at all.
 8. **Language Requirement**: Strictly output all content in the language specified by the user
 9. Regardless of information completeness, always output conforming JSON - do not ask questions or request more information
 10. **No teacher identity on slides**: Scene titles and keyPoints must be neutral and topic-focused. Never include the teacher's name or role (e.g., avoid "Teacher Wang's Tips", "Teacher's Wishes"). Use generic labels like "Tips", "Summary", "Key Takeaways" instead.
