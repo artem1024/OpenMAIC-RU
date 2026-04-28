@@ -476,12 +476,17 @@ export function removeSpeechVisualReferencesForRemovedMedia(
 // TTS generation
 // ---------------------------------------------------------------------------
 
+export interface TTSGenerationStats {
+  count: number;
+  providerId: TTSProviderId | null;
+}
+
 export async function generateTTSForClassroom(
   scenes: Scene[],
   classroomId: string,
   baseUrl: string,
   teacherName?: string,
-): Promise<void> {
+): Promise<TTSGenerationStats> {
   const audioDir = path.join(CLASSROOMS_DIR, classroomId, 'audio');
   await ensureDir(audioDir);
 
@@ -494,11 +499,13 @@ export async function generateTTSForClassroom(
   ) as TTSProviderId[];
   if (ttsProviderIds.length === 0) {
     log.warn('No server TTS provider configured, skipping TTS generation');
-    return;
+    return { count: 0, providerId: null };
   }
 
   const primaryId = ttsProviderIds[0];
   const secondaryId = ttsProviderIds[1];
+  let generatedCount = 0;
+  let usedProviderId: TTSProviderId | null = null;
 
   const runPass = async (providerId: TTSProviderId, isPrimary: boolean): Promise<void> => {
     const apiKey = resolveTTSApiKey(providerId);
@@ -551,6 +558,8 @@ export async function generateTTSForClassroom(
         await fs.writeFile(path.join(audioDir, filename), result.audio);
         speechAction.audioId = audioId;
         speechAction.audioUrl = mediaServingUrl(baseUrl, classroomId, `audio/${filename}`);
+        generatedCount += 1;
+        usedProviderId = providerId;
         log.info(`Generated TTS [${providerId}]: ${filename} (${result.audio.length} bytes)`);
       }
     }
@@ -561,7 +570,7 @@ export async function generateTTSForClassroom(
   } catch (err) {
     if (!secondaryId) {
       log.warn(`Classroom ${classroomId}: primary TTS "${primaryId}" failed and no secondary configured:`, err);
-      return;
+      return { count: generatedCount, providerId: usedProviderId };
     }
     log.warn(
       `Classroom ${classroomId}: primary TTS "${primaryId}" failed, cascading entire classroom to "${secondaryId}". Reason:`,
@@ -573,4 +582,5 @@ export async function generateTTSForClassroom(
       log.warn(`Classroom ${classroomId}: secondary TTS "${secondaryId}" also failed:`, err2);
     }
   }
+  return { count: generatedCount, providerId: usedProviderId };
 }

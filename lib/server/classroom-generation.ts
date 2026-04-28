@@ -65,6 +65,39 @@ export interface ClassroomGenerationProgress {
   totalScenes?: number;
 }
 
+/**
+ * Per-scene timing breakdown emitted in webhook payload for telemetry.
+ */
+export interface SceneTimingEntry {
+  sceneIndex: number;
+  title: string;
+  ms: number;
+}
+
+/**
+ * Stage-level timings собираются вокруг фаз пайплайна и улетают в webhook
+ * (см. classroom-job-runner.ts). Все поля nullable: фаза могла быть пропущена
+ * (например, TTS отключён) или оборваться до завершения.
+ */
+export interface GenerationTimings {
+  outline_ms: number | null;
+  scenes_ms: number | null;
+  media_ms: number | null;
+  tts_ms: number | null;
+  total_ms: number | null;
+  tts_actions_count: number | null;
+  scenes_breakdown: SceneTimingEntry[] | null;
+}
+
+export interface GenerationConfigSnapshot {
+  /** Профиль генерации (fast/standard/quality). Phase 1 — пока 'standard'. */
+  profile: string;
+  /** Включён ли параллельный режим. Phase 1 — пока false. */
+  parallel_enabled: boolean;
+  /** Резолвнутый TTS-провайдер (gemini-tts / edge-tts / etc.) или null. */
+  tts_provider: string | null;
+}
+
 export interface GenerateClassroomResult {
   id: string;
   url: string;
@@ -72,6 +105,13 @@ export interface GenerateClassroomResult {
   scenes: Scene[];
   scenesCount: number;
   createdAt: string;
+  /**
+   * Стадийные тайминги пайплайна. Опциональны для обратной совместимости с
+   * существующими консьюмерами GenerateClassroomResult.
+   */
+  timings?: GenerationTimings;
+  /** Снимок конфигурации генерации, попадает в webhook телеметрии. */
+  config?: GenerationConfigSnapshot;
 }
 
 function createInMemoryStore(stage: Stage): StageStore {
@@ -228,6 +268,17 @@ export async function generateClassroom(
 ): Promise<GenerateClassroomResult> {
   const { requirement, pdfContent } = input;
 
+  // Stage timings: каждая фаза замеряется через Date.now(); если фаза
+  // пропущена/обвалилась — поле остаётся null.
+  const pipelineStartedAt = Date.now();
+  let outlineMs: number | null = null;
+  let scenesMs: number | null = null;
+  let mediaMs: number | null = null;
+  let ttsMs: number | null = null;
+  let ttsActionsCount: number | null = null;
+  let ttsProviderUsed: string | null = null;
+  const scenesBreakdown: SceneTimingEntry[] = [];
+
   await options.onProgress?.({
     step: 'initializing',
     progress: 5,
@@ -321,6 +372,7 @@ export async function generateClassroom(
     scenesGenerated: 0,
   });
 
+  const outlinePhaseStart = Date.now();
   const outlinesResult = await generateSceneOutlinesFromRequirements(
     requirements,
     pdfText,
@@ -334,6 +386,7 @@ export async function generateClassroom(
       teacherContext,
     },
   );
+  outlineMs = Date.now() - outlinePhaseStart;
 
   if (!outlinesResult.success || !outlinesResult.data) {
     log.error('Failed to generate outlines:', outlinesResult.error);
@@ -368,8 +421,10 @@ export async function generateClassroom(
   log.info('Stage 2: Generating scene content and actions...');
   let generatedScenes = 0;
   const outlineBySceneId = new Map<string, SceneOutline>();
+  const scenesPhaseStart = Date.now();
 
   for (const [index, outline] of outlines.entries()) {
+    const sceneStart = Date.now();
     const safeOutline = applyOutlineFallbacks(outline, true);
     const progressStart = 30 + Math.floor((index / Math.max(outlines.length, 1)) * 60);
 
@@ -407,6 +462,11 @@ export async function generateClassroom(
     outlineBySceneId.set(sceneId, safeOutline);
 
     generatedScenes += 1;
+    scenesBreakdown.push({
+      sceneIndex: index,
+      title: safeOutline.title,
+      ms: Date.now() - sceneStart,
+    });
     const progressEnd = 30 + Math.floor(((index + 1) / Math.max(outlines.length, 1)) * 60);
     await options.onProgress?.({
       step: 'generating_scenes',
@@ -416,6 +476,7 @@ export async function generateClassroom(
       totalScenes: outlines.length,
     });
   }
+  scenesMs = Date.now() - scenesPhaseStart;
 
   const scenes = store.getState().scenes;
   log.info(`Pipeline complete: ${scenes.length} scenes generated`);
@@ -434,6 +495,7 @@ export async function generateClassroom(
       totalScenes: outlines.length,
     });
 
+    const mediaPhaseStart = Date.now();
     try {
       const mediaMap = await generateMediaForClassroom(outlines, stageId, options.baseUrl);
       replaceMediaPlaceholders(scenes, mediaMap);
@@ -454,6 +516,7 @@ export async function generateClassroom(
     } catch (err) {
       log.warn('Media generation phase failed, continuing:', err);
     }
+    mediaMs = Date.now() - mediaPhaseStart;
   }
 
   // Phase: TTS generation
@@ -466,13 +529,17 @@ export async function generateClassroom(
       totalScenes: outlines.length,
     });
 
+    const ttsPhaseStart = Date.now();
     try {
       const teacher = agents.find(a => a.role === 'teacher');
-      await generateTTSForClassroom(scenes, stageId, options.baseUrl, teacher?.name);
+      const ttsStats = await generateTTSForClassroom(scenes, stageId, options.baseUrl, teacher?.name);
+      ttsActionsCount = ttsStats.count;
+      ttsProviderUsed = ttsStats.providerId;
       log.info('TTS generation complete');
     } catch (err) {
       log.warn('TTS generation phase failed, continuing:', err);
     }
+    ttsMs = Date.now() - ttsPhaseStart;
   }
 
   await options.onProgress?.({
@@ -502,6 +569,27 @@ export async function generateClassroom(
     totalScenes: outlines.length,
   });
 
+  const totalMs = Date.now() - pipelineStartedAt;
+
+  // TODO(phase-1): резолвить tts_provider/profile из конфига профиля генерации.
+  // Сейчас tts_provider — что фактически отстрелял TTS-проход (gemini-tts/edge-tts),
+  // либо null, если TTS был выключен/упал.
+  const timings: GenerationTimings = {
+    outline_ms: outlineMs,
+    scenes_ms: scenesMs,
+    media_ms: mediaMs,
+    tts_ms: ttsMs,
+    total_ms: totalMs,
+    tts_actions_count: ttsActionsCount,
+    scenes_breakdown: scenesBreakdown.length > 0 ? scenesBreakdown : null,
+  };
+
+  const config: GenerationConfigSnapshot = {
+    profile: 'standard',
+    parallel_enabled: false,
+    tts_provider: ttsProviderUsed ?? (input.enableTTS ? 'gemini-tts' : null),
+  };
+
   return {
     id: persisted.id,
     url: persisted.url,
@@ -509,5 +597,7 @@ export async function generateClassroom(
     scenes,
     scenesCount: scenes.length,
     createdAt: persisted.createdAt,
+    timings,
+    config,
   };
 }

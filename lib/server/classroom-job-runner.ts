@@ -51,12 +51,17 @@ export function runClassroomGenerationJob(
       if (webhookUrl) {
         try {
           const secret = process.env.OSVAIVAI_WEBHOOK_SECRET || '';
+          // Backwards-compatible: исходные поля сохранены, добавлены опциональные
+          // timings/config (см. GenerationTimings/GenerationConfigSnapshot). Старые
+          // консьюмеры просто игнорируют новые ключи.
           const body = JSON.stringify({
             jobId: jobId,
             classroomId: result.id,
             title: result.stage?.name || '',
             scenesCount: result.scenesCount,
             htmlPath: result.url || null,
+            timings: result.timings ?? null,
+            config: result.config ?? null,
           });
           const timestamp = Math.floor(Date.now() / 1000).toString();
           const signature = secret ? signWebhookBody(secret, timestamp, body) : '';
