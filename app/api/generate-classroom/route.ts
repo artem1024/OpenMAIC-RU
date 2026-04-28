@@ -24,16 +24,22 @@ export async function POST(req: NextRequest) {
       ...(rawBody.pdfContent ? { pdfContent: rawBody.pdfContent } : {}),
       ...(rawBody.language ? { language: rawBody.language } : {}),
       ...(rawBody.enableWebSearch != null ? { enableWebSearch: rawBody.enableWebSearch } : {}),
-      ...(hasServerImage
-        ? { enableImageGeneration: true }
-        : rawBody.enableImageGeneration != null
-          ? { enableImageGeneration: rawBody.enableImageGeneration }
-          : {}),
-      ...(hasServerVideo
-        ? { enableVideoGeneration: true }
-        : rawBody.enableVideoGeneration != null
-          ? { enableVideoGeneration: rawBody.enableVideoGeneration }
-          : {}),
+      // Explicit `false` from caller wins even in managed mode — host operators
+      // (e.g. osvaivai feature flags) need a hard kill-switch for media.
+      ...(rawBody.enableImageGeneration === false
+        ? { enableImageGeneration: false }
+        : hasServerImage
+          ? { enableImageGeneration: true }
+          : rawBody.enableImageGeneration != null
+            ? { enableImageGeneration: rawBody.enableImageGeneration }
+            : {}),
+      ...(rawBody.enableVideoGeneration === false
+        ? { enableVideoGeneration: false }
+        : hasServerVideo
+          ? { enableVideoGeneration: true }
+          : rawBody.enableVideoGeneration != null
+            ? { enableVideoGeneration: rawBody.enableVideoGeneration }
+            : {}),
       ...(rawBody.enableTTS != null ? { enableTTS: rawBody.enableTTS } : {}),
       ...(rawBody.agentMode ? { agentMode: rawBody.agentMode } : {}),
       ...(rawBody.modelString ? { modelString: rawBody.modelString } : {}),
