@@ -46,6 +46,15 @@ export interface GenerateClassroomInput {
   agentMode?: 'default' | 'generate';
   modelString?: string;
   generationProfile?: Partial<GenerationProfile>;
+  /**
+   * Phase 3: opt-in bounded-parallel scene generation. Default behaviour
+   * (sequential loop) is unchanged when this flag is absent or false.
+   */
+  parallelMode?: boolean;
+  /**
+   * Batch size for parallel mode (default 2, clamped 1..8 by route layer).
+   */
+  parallelConcurrency?: number;
 }
 
 export interface GenerationProfile {
@@ -104,8 +113,12 @@ export interface GenerationTimings {
 export interface GenerationConfigSnapshot {
   /** Профиль генерации урока (short/standard/deep). */
   profile: string;
-  /** Включён ли параллельный режим. Phase 1 — пока false. */
+  /** Включён ли параллельный режим. */
   parallel_enabled: boolean;
+  /**
+   * Размер батча параллельной генерации сцен. null когда parallel_enabled=false.
+   */
+  parallel_concurrency: number | null;
   /** Резолвнутый TTS-провайдер (gemini-tts / edge-tts / etc.) или null. */
   tts_provider: string | null;
 }
@@ -312,6 +325,126 @@ Return a JSON object with this exact structure:
   }));
 }
 
+// TODO(phase-3-tests): добавить vitest-юнит на parallelMode (sequential vs
+// batched расположение вызовов aiCall), когда удастся изолировать
+// generateClassroom от тяжёлых зависимостей (model resolver, persistence,
+// progress callback и т.д.). Сейчас интеграция проверяется e2e на тест-сервере.
+
+/**
+ * Phase 3: context-summary микро-фаза.
+ * Один LLM-вызов получает outline всех сцен и возвращает короткий summary
+ * (1–2 предложения) для каждой: что было раньше, ключевая идея, что будет
+ * дальше. Эти summaries прокидываются в `outline.description` перед параллельной
+ * генерацией сцены, чтобы соседние сцены не повторялись и сохраняли нарратив.
+ *
+ * При любой ошибке/частичном ответе возвращается массив пустых строк той же
+ * длины, что outlines — фолбэк, чтобы не блокировать пайплайн.
+ */
+async function generateSceneContextSummaries(
+  outlines: SceneOutline[],
+  aiCall: AICallFn,
+): Promise<string[]> {
+  if (outlines.length === 0) return [];
+  const fallback = outlines.map(() => '');
+
+  const systemPrompt =
+    'You are an instructional designer producing tiny context briefs for ' +
+    'each scene of a lesson, so independent writers can keep narrative ' +
+    'continuity. Respond with valid JSON only, no commentary, no markdown.';
+
+  const outlineList = outlines
+    .map(
+      (o, i) =>
+        `${i + 1}. [${o.type}] ${o.title} — ${o.description || ''}`.trim(),
+    )
+    .join('\n');
+
+  const userPrompt = `Below is the outline of ${outlines.length} lesson scenes.
+For EACH scene produce a 1–2 sentence summary capturing:
+- What was covered in the earlier scenes (so this scene won't repeat it)
+- The key idea of THIS scene
+- What comes next (so this scene can foreshadow it)
+
+Outline:
+${outlineList}
+
+Return JSON of the form:
+{"summaries":[{"index":1,"summary":"..."},{"index":2,"summary":"..."}]}
+Indexes are 1-based and must cover every scene.`;
+
+  let raw: string;
+  try {
+    raw = await aiCall(systemPrompt, userPrompt);
+  } catch (err) {
+    log.warn('Context-summary phase: LLM call failed, using empty summaries:', err);
+    return fallback;
+  }
+
+  let cleaned = raw.trim();
+  if (cleaned.startsWith('```')) {
+    cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+  }
+
+  try {
+    const parsed = JSON.parse(cleaned) as {
+      summaries?: Array<{ index?: number; summary?: string }>;
+    };
+    const list = Array.isArray(parsed.summaries) ? parsed.summaries : [];
+    const out = [...fallback];
+    for (const entry of list) {
+      const idx = typeof entry.index === 'number' ? entry.index - 1 : -1;
+      if (idx >= 0 && idx < out.length && typeof entry.summary === 'string') {
+        out[idx] = entry.summary.trim();
+      }
+    }
+    const filled = out.filter((s) => s.length > 0).length;
+    if (filled < outlines.length) {
+      log.warn(
+        `Context-summary phase: got ${filled}/${outlines.length} summaries, missing ones default to empty`,
+      );
+    } else {
+      log.info(`Context-summary phase: produced ${filled} summaries`);
+    }
+    return out;
+  } catch (err) {
+    log.warn('Context-summary phase: failed to parse JSON, using empty summaries:', err);
+    return fallback;
+  }
+}
+
+/**
+ * Phase 3: пометка ошибки rate-limit / quota / 429.
+ * Не делаем ничего экзотического — просто матчим строкой.
+ */
+function isRateLimitError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes('429') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('rate limit') ||
+    msg.includes('rate-limit') ||
+    msg.includes('too many requests') ||
+    msg.includes('quota')
+  );
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Phase 3: вмерживание context-summary в outline. Минимально-инвазивно —
+ * расширяем поле `description`, которое уже прокидывается во все
+ * scene-content промпты (см. scene-generator.ts).
+ */
+function withContextSummary(outline: SceneOutline, summary: string): SceneOutline {
+  if (!summary) return outline;
+  const prefix = `Context (neighbour scenes): ${summary}`;
+  const merged = outline.description
+    ? `${outline.description}\n\n${prefix}`
+    : prefix;
+  return { ...outline, description: merged };
+}
+
 export async function generateClassroom(
   input: GenerateClassroomInput,
   options: {
@@ -484,19 +617,27 @@ export async function generateClassroom(
   const outlineBySceneId = new Map<string, SceneOutline>();
   const scenesPhaseStart = Date.now();
 
-  for (const [index, outline] of outlines.entries()) {
+  /**
+   * Per-scene work: prep outline → content → actions. Returns the timings
+   * tuple OR null on failure so the caller can decide whether to skip / log.
+   * Does NOT touch the shared store — каллер сериализует это под одним
+   * await'ом, чтобы избежать гонки в createSceneWithActions.
+   */
+  type SceneWorkResult = {
+    safeOutline: SceneOutline;
+    content: NonNullable<Awaited<ReturnType<typeof generateSceneContent>>>;
+    actions: Awaited<ReturnType<typeof generateSceneActions>>;
+    ms: number;
+  };
+  const runSceneWork = async (
+    outline: SceneOutline,
+    summary: string,
+  ): Promise<SceneWorkResult | null> => {
     const sceneStart = Date.now();
-    const safeOutline = applyOutlineFallbacks(outline, true);
-    const progressStart = 30 + Math.floor((index / Math.max(outlines.length, 1)) * 60);
-
-    await options.onProgress?.({
-      step: 'generating_scenes',
-      progress: Math.max(progressStart, 31),
-      message: `Generating scene ${index + 1}/${outlines.length}: ${safeOutline.title}`,
-      scenesGenerated: generatedScenes,
-      totalScenes: outlines.length,
-    });
-
+    const safeOutline = applyOutlineFallbacks(
+      withContextSummary(outline, summary),
+      true,
+    );
     const content = await generateSceneContent(
       safeOutline,
       aiCall,
@@ -509,33 +650,123 @@ export async function generateClassroom(
     );
     if (!content) {
       log.warn(`Skipping scene "${safeOutline.title}" — content generation failed`);
-      continue;
+      return null;
     }
-
     const actions = await generateSceneActions(safeOutline, content, aiCall, undefined, agents);
-    log.info(`Scene "${safeOutline.title}": ${actions.length} actions`);
+    return { safeOutline, content, actions, ms: Date.now() - sceneStart };
+  };
 
-    const sceneId = createSceneWithActions(safeOutline, content, actions, api);
+  const commitScene = (
+    index: number,
+    result: SceneWorkResult,
+  ): void => {
+    log.info(`Scene "${result.safeOutline.title}": ${result.actions.length} actions`);
+    const sceneId = createSceneWithActions(
+      result.safeOutline,
+      result.content,
+      result.actions,
+      api,
+    );
     if (!sceneId) {
-      log.warn(`Skipping scene "${safeOutline.title}" — scene creation failed`);
-      continue;
+      log.warn(`Skipping scene "${result.safeOutline.title}" — scene creation failed`);
+      return;
     }
-    outlineBySceneId.set(sceneId, safeOutline);
-
+    outlineBySceneId.set(sceneId, result.safeOutline);
     generatedScenes += 1;
     scenesBreakdown.push({
       sceneIndex: index,
-      title: safeOutline.title,
-      ms: Date.now() - sceneStart,
+      title: result.safeOutline.title,
+      ms: result.ms,
     });
-    const progressEnd = 30 + Math.floor(((index + 1) / Math.max(outlines.length, 1)) * 60);
-    await options.onProgress?.({
-      step: 'generating_scenes',
-      progress: Math.min(progressEnd, 90),
-      message: `Generated ${generatedScenes}/${outlines.length} scenes`,
-      scenesGenerated: generatedScenes,
-      totalScenes: outlines.length,
-    });
+  };
+
+  if (input.parallelMode) {
+    const concurrency = Math.max(1, Math.min(8, input.parallelConcurrency ?? 2));
+    log.info(`Stage 2 (parallel): batches of ${concurrency}`);
+
+    // Context-summary микро-фаза перед параллелью.
+    const summaries = await generateSceneContextSummaries(outlines, aiCall);
+
+    for (let i = 0; i < outlines.length; i += concurrency) {
+      const batch = outlines.slice(i, i + concurrency);
+      const batchSummaries = summaries.slice(i, i + concurrency);
+
+      await options.onProgress?.({
+        step: 'generating_scenes',
+        progress: Math.max(
+          30 + Math.floor((i / Math.max(outlines.length, 1)) * 60),
+          31,
+        ),
+        message: `Generating scenes ${i + 1}-${Math.min(i + concurrency, outlines.length)}/${outlines.length} (parallel)`,
+        scenesGenerated: generatedScenes,
+        totalScenes: outlines.length,
+      });
+
+      // Exp-backoff retry на 429: до 2 повторов всего батча целиком.
+      let attempt = 0;
+      let results: PromiseSettledResult<SceneWorkResult | null>[] = [];
+      while (attempt <= 2) {
+        results = await Promise.allSettled(
+          batch.map((outline, idx) => runSceneWork(outline, batchSummaries[idx] ?? '')),
+        );
+        const has429 = results.some(
+          (r) => r.status === 'rejected' && isRateLimitError(r.reason),
+        );
+        if (!has429 || attempt === 2) break;
+        const delay = 2 ** (attempt + 1) * 1000;
+        log.warn(
+          `Parallel batch hit rate limit, retry ${attempt + 1}/2 after ${delay}ms`,
+        );
+        await sleep(delay);
+        attempt += 1;
+      }
+
+      for (let idx = 0; idx < results.length; idx++) {
+        const r = results[idx];
+        const globalIndex = i + idx;
+        if (r.status === 'fulfilled' && r.value) {
+          commitScene(globalIndex, r.value);
+        } else if (r.status === 'rejected') {
+          log.warn(
+            `Scene ${globalIndex + 1} failed in parallel batch: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`,
+          );
+        }
+      }
+
+      const progressEnd = 30 + Math.floor(
+        (Math.min(i + concurrency, outlines.length) / Math.max(outlines.length, 1)) * 60,
+      );
+      await options.onProgress?.({
+        step: 'generating_scenes',
+        progress: Math.min(progressEnd, 90),
+        message: `Generated ${generatedScenes}/${outlines.length} scenes`,
+        scenesGenerated: generatedScenes,
+        totalScenes: outlines.length,
+      });
+    }
+  } else {
+    for (const [index, outline] of outlines.entries()) {
+      const progressStart = 30 + Math.floor((index / Math.max(outlines.length, 1)) * 60);
+      await options.onProgress?.({
+        step: 'generating_scenes',
+        progress: Math.max(progressStart, 31),
+        message: `Generating scene ${index + 1}/${outlines.length}: ${outline.title}`,
+        scenesGenerated: generatedScenes,
+        totalScenes: outlines.length,
+      });
+
+      const result = await runSceneWork(outline, '');
+      if (result) commitScene(index, result);
+
+      const progressEnd = 30 + Math.floor(((index + 1) / Math.max(outlines.length, 1)) * 60);
+      await options.onProgress?.({
+        step: 'generating_scenes',
+        progress: Math.min(progressEnd, 90),
+        message: `Generated ${generatedScenes}/${outlines.length} scenes`,
+        scenesGenerated: generatedScenes,
+        totalScenes: outlines.length,
+      });
+    }
   }
   scenesMs = Date.now() - scenesPhaseStart;
 
@@ -647,7 +878,10 @@ export async function generateClassroom(
 
   const config: GenerationConfigSnapshot = {
     profile: generationProfile.name,
-    parallel_enabled: false,
+    parallel_enabled: Boolean(input.parallelMode),
+    parallel_concurrency: input.parallelMode
+      ? Math.max(1, Math.min(8, input.parallelConcurrency ?? 2))
+      : null,
     tts_provider: ttsProviderUsed ?? (input.enableTTS ? 'gemini-tts' : null),
   };
 

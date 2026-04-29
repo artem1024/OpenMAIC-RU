@@ -44,6 +44,15 @@ export async function POST(req: NextRequest) {
       ...(rawBody.agentMode ? { agentMode: rawBody.agentMode } : {}),
       ...(rawBody.modelString ? { modelString: rawBody.modelString } : {}),
       ...(rawBody.generationProfile ? { generationProfile: rawBody.generationProfile } : {}),
+      ...(rawBody.parallelMode !== undefined ? { parallelMode: !!rawBody.parallelMode } : {}),
+      ...(rawBody.parallelConcurrency !== undefined
+        ? {
+            parallelConcurrency: Math.max(
+              1,
+              Math.min(8, Number(rawBody.parallelConcurrency) || 2),
+            ),
+          }
+        : {}),
     };
     const { requirement } = body;
 
