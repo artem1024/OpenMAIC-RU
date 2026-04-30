@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import type { NextRequest } from 'next/server';
 import type { Scene, Stage } from '@/lib/types/stage';
+import type { ClassroomManifest } from '@/lib/types/manifest';
 import { fixSlideLayouts } from '@/lib/server/slide-layout-fix';
 
 export const CLASSROOMS_DIR = path.join(process.cwd(), 'data', 'classrooms');
@@ -52,6 +53,13 @@ export interface PersistedClassroomData {
   stage: Stage;
   scenes: Scene[];
   createdAt: string;
+  /**
+   * Optional asset manifest describing media (image/video) and interactive
+   * HTML versions. Absent on legacy classrooms generated before the manifest
+   * layer; new generations and partial regens populate it. Readers MUST
+   * tolerate `manifest === undefined` for backwards compatibility.
+   */
+  manifest?: ClassroomManifest;
 }
 
 export function isValidClassroomId(id: string): boolean {
@@ -76,6 +84,7 @@ export async function persistClassroom(
     id: string;
     stage: Stage;
     scenes: Scene[];
+    manifest?: ClassroomManifest;
   },
   baseUrl: string,
 ): Promise<PersistedClassroomData & { url: string }> {
@@ -99,6 +108,7 @@ export async function persistClassroom(
     stage: data.stage,
     scenes: data.scenes,
     createdAt: new Date().toISOString(),
+    ...(data.manifest ? { manifest: data.manifest } : {}),
   };
 
   await ensureClassroomsDir();

@@ -7,9 +7,17 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import sharp from 'sharp';
 import { createLogger } from '@/lib/logger';
 import { CLASSROOMS_DIR } from '@/lib/server/classroom-storage';
+import {
+  type AssetEntry,
+  type ClassroomManifest,
+  MANIFEST_SCHEMA_VERSION,
+  formatVersionTag,
+} from '@/lib/types/manifest';
+import type { TTSMetadata, TTSVersionRecord } from '@/lib/types/action';
 import { generateImage } from '@/lib/media/image-providers';
 import { generateVideo, normalizeVideoOptions } from '@/lib/media/video-providers';
 import { generateTTS, generateGeminiTTS } from '@/lib/audio/tts-providers';
@@ -105,6 +113,83 @@ function mediaServingUrl(_baseUrl: string, classroomId: string, subPath: string)
   return `/api/classroom-media/${classroomId}/${subPath}`;
 }
 
+/**
+ * Normalize speech text for hashing: trim, collapse internal whitespace,
+ * lowercase. Used to detect "no-op" TTS regens.
+ *
+ * IMPORTANT: this normalization is part of the wire contract — osvaivai
+ * mirrors it to recompute hashes server-side. Do not change without
+ * coordinating with the consumer.
+ */
+function normalizeTextForHash(text: string): string {
+  return text.trim().replace(/\s+/gu, ' ').toLowerCase();
+}
+
+/**
+ * Compute the canonical content hash of a speech action's text. Exported so
+ * downstream consumers (osvaivai backend, partial-regen endpoints) can compute
+ * the same hash without re-implementing the normalization rules.
+ */
+export function computeTextHash(text: string): string {
+  return createHash('sha256').update(normalizeTextForHash(text), 'utf-8').digest('hex');
+}
+
+/**
+ * Get-or-create an `AssetEntry` slot in the manifest, ready for a new
+ * version push. Caller is expected to push to `versions[]` and bump
+ * `currentVersion` after the asset file has been written.
+ *
+ * Backwards-compat: legacy classrooms have no manifest; this is invoked only
+ * when the caller has already provided one (manifest is created at the start
+ * of a generation pipeline, or by partial-regen flows for older classrooms).
+ */
+function ensureAssetEntry(
+  manifest: ClassroomManifest,
+  elementId: string,
+  init: {
+    kind: AssetEntry['kind'];
+    sceneId: string;
+    prompt: string;
+    provider: string;
+    model: string;
+    params: Record<string, unknown>;
+  },
+): AssetEntry {
+  const existing = manifest.assets[elementId];
+  if (existing) {
+    // Update mutable descriptive fields (next regen may use a new prompt /
+    // provider) but keep version history intact.
+    existing.kind = init.kind;
+    existing.sceneId = init.sceneId;
+    existing.prompt = init.prompt;
+    existing.provider = init.provider;
+    existing.model = init.model;
+    existing.params = init.params;
+    return existing;
+  }
+  const fresh: AssetEntry = {
+    kind: init.kind,
+    elementId,
+    sceneId: init.sceneId,
+    prompt: init.prompt,
+    provider: init.provider,
+    model: init.model,
+    params: init.params,
+    currentVersion: 0,
+    versions: [],
+  };
+  manifest.assets[elementId] = fresh;
+  return fresh;
+}
+
+/** Build a fresh empty manifest for a new generation. */
+export function createClassroomManifest(): ClassroomManifest {
+  return {
+    schemaVersion: MANIFEST_SCHEMA_VERSION,
+    assets: {},
+  };
+}
+
 function elementBounds(el: { left?: number; top?: number; width?: number; height?: number }) {
   if (
     typeof el.left !== 'number' ||
@@ -131,11 +216,23 @@ function xOverlapPx(
   return Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left));
 }
 
+/**
+ * For a serving URL pointing at generated media, return the path relative to
+ * the classroom's `media/` directory (suitable for `path.join(mediaDir, …)`).
+ *
+ * Supports both layouts:
+ *   - Legacy: `media/{elementId}.{ext}` → returns `{elementId}.{ext}`
+ *   - Versioned: `media/{elementId}/v{NNN}.{ext}` → returns `{elementId}/v{NNN}.{ext}`
+ *
+ * Returns `null` if the src is not a generated-image URL for this classroom.
+ */
 function generatedImageFilename(src: string, classroomId: string): string | null {
   const prefix = `/api/classroom-media/${classroomId}/media/`;
   if (!src.startsWith(prefix)) return null;
-  const filename = src.slice(prefix.length);
-  return filename.startsWith(GENERATED_IMAGE_PREFIX) ? filename : null;
+  const rel = src.slice(prefix.length);
+  // First path segment must start with the generated-image prefix.
+  const firstSegment = rel.split('/')[0];
+  return firstSegment && firstSegment.startsWith(GENERATED_IMAGE_PREFIX) ? rel : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -146,12 +243,16 @@ export async function generateMediaForClassroom(
   outlines: SceneOutline[],
   classroomId: string,
   baseUrl: string,
+  manifest?: ClassroomManifest,
 ): Promise<Record<string, string>> {
   const mediaDir = path.join(CLASSROOMS_DIR, classroomId, 'media');
   await ensureDir(mediaDir);
 
-  // Collect all media generation requests from outlines
-  const requests = outlines.flatMap((o) => o.mediaGenerations ?? []);
+  // Collect all media generation requests from outlines, preserving sceneId
+  // (= outline.id) for manifest entries.
+  const requests = outlines.flatMap((o) =>
+    (o.mediaGenerations ?? []).map((req) => ({ req, sceneId: o.id })),
+  );
   if (requests.length === 0) return {};
 
   // Resolve providers
@@ -162,11 +263,15 @@ export async function generateMediaForClassroom(
 
   // Separate image and video requests, generate each type sequentially
   // but run the two types in parallel (providers often have limited concurrency).
-  const imageRequests = requests.filter((r) => r.type === 'image' && imageProviderIds.length > 0);
-  const videoRequests = requests.filter((r) => r.type === 'video' && videoProviderIds.length > 0);
+  const imageRequests = requests.filter(
+    ({ req }) => req.type === 'image' && imageProviderIds.length > 0,
+  );
+  const videoRequests = requests.filter(
+    ({ req }) => req.type === 'video' && videoProviderIds.length > 0,
+  );
 
   const generateImages = async () => {
-    for (const req of imageRequests) {
+    for (const { req, sceneId } of imageRequests) {
       const providerId = imageProviderIds[0] as ImageProviderId;
       const apiKey = resolveImageApiKey(providerId);
       if (!apiKey) {
@@ -196,10 +301,37 @@ export async function generateMediaForClassroom(
             throw new Error('Image generation returned no data (neither base64 nor url)');
           }
 
-          const filename = `${req.elementId}.${ext}`;
-          await fs.writeFile(path.join(mediaDir, filename), buf);
-          mediaMap[req.elementId] = mediaServingUrl(baseUrl, classroomId, `media/${filename}`);
-          log.info(`Generated image: ${filename}`);
+          // Compute next version number from manifest (if any) and write
+          // versioned path: media/{elementId}/v{NNN}.{ext}. We compute the
+          // next version up front but only mutate the manifest after the
+          // file write succeeds, so failed retries don't leave empty slots.
+          const previousVersion = manifest?.assets[req.elementId]?.currentVersion ?? 0;
+          const nextVersion = previousVersion + 1;
+          const versionTag = formatVersionTag(nextVersion);
+          const relPath = `media/${req.elementId}/${versionTag}.${ext}`;
+          const absPath = path.join(mediaDir, req.elementId, `${versionTag}.${ext}`);
+          await ensureDir(path.dirname(absPath));
+          await fs.writeFile(absPath, buf);
+          if (manifest) {
+            const entry = ensureAssetEntry(manifest, req.elementId, {
+              kind: 'image',
+              sceneId,
+              prompt: req.prompt,
+              provider: providerId,
+              model: model ?? '',
+              params: { aspectRatio: req.aspectRatio || '16:9' },
+            });
+            entry.currentVersion = nextVersion;
+            entry.versions.push({
+              versionNo: nextVersion,
+              path: relPath,
+              promptUsed: req.prompt,
+              paramsUsed: { aspectRatio: req.aspectRatio || '16:9' },
+              generatedAt: new Date().toISOString(),
+            });
+          }
+          mediaMap[req.elementId] = mediaServingUrl(baseUrl, classroomId, relPath);
+          log.info(`Generated image: ${relPath}`);
         });
       } catch (err) {
         log.warn(`Image generation failed for ${req.elementId} after ${MEDIA_GEN_ATTEMPTS} attempts:`, err);
@@ -208,7 +340,7 @@ export async function generateMediaForClassroom(
   };
 
   const generateVideos = async () => {
-    for (const req of videoRequests) {
+    for (const { req, sceneId } of videoRequests) {
       const providerId = videoProviderIds[0] as VideoProviderId;
       const apiKey = resolveVideoApiKey(providerId);
       if (!apiKey) {
@@ -231,10 +363,38 @@ export async function generateMediaForClassroom(
           );
 
           const buf = await downloadToBuffer(result.url);
-          const filename = `${req.elementId}.mp4`;
-          await fs.writeFile(path.join(mediaDir, filename), buf);
-          mediaMap[req.elementId] = mediaServingUrl(baseUrl, classroomId, `media/${filename}`);
-          log.info(`Generated video: ${filename}`);
+
+          const previousVersion = manifest?.assets[req.elementId]?.currentVersion ?? 0;
+          const nextVersion = previousVersion + 1;
+          const versionTag = formatVersionTag(nextVersion);
+          const relPath = `media/${req.elementId}/${versionTag}.mp4`;
+          const absPath = path.join(mediaDir, req.elementId, `${versionTag}.mp4`);
+          await ensureDir(path.dirname(absPath));
+          await fs.writeFile(absPath, buf);
+          if (manifest) {
+            const entry = ensureAssetEntry(manifest, req.elementId, {
+              kind: 'video',
+              sceneId,
+              prompt: req.prompt,
+              provider: providerId,
+              model: model ?? '',
+              params: {
+                aspectRatio: (req.aspectRatio as string) || '16:9',
+              },
+            });
+            entry.currentVersion = nextVersion;
+            entry.versions.push({
+              versionNo: nextVersion,
+              path: relPath,
+              promptUsed: req.prompt,
+              paramsUsed: {
+                aspectRatio: (req.aspectRatio as string) || '16:9',
+              },
+              generatedAt: new Date().toISOString(),
+            });
+          }
+          mediaMap[req.elementId] = mediaServingUrl(baseUrl, classroomId, relPath);
+          log.info(`Generated video: ${relPath}`);
         });
       } catch (err) {
         log.warn(`Video generation failed for ${req.elementId} after ${MEDIA_GEN_ATTEMPTS} attempts:`, err);
@@ -507,6 +667,11 @@ export async function generateTTSForClassroom(
   let generatedCount = 0;
   let usedProviderId: TTSProviderId | null = null;
 
+  // configVersion is a free-form tag describing the provider config used for
+  // this generation; for now we use the ai-gateway commit hash if available,
+  // otherwise a stable "default" placeholder. Wave 2 may inject a real value.
+  const configVersion = process.env.AI_GATEWAY_COMMIT?.trim() || 'default';
+
   const runPass = async (providerId: TTSProviderId, isPrimary: boolean): Promise<void> => {
     const apiKey = resolveTTSApiKey(providerId);
     if (!apiKey && TTS_PROVIDERS[providerId]?.requiresApiKey) {
@@ -554,13 +719,48 @@ export async function generateTTSForClassroom(
           );
         }
 
-        const filename = `${audioId}.${format}`;
-        await fs.writeFile(path.join(audioDir, filename), result.audio);
+        // Versioned audio path: audio/{actionId}/v{NNN}.{format}.
+        // If the action already has TTS metadata (e.g. partial regen of an
+        // existing classroom), bump the version; otherwise start at v001.
+        const previousVersion = speechAction.tts?.currentVersion ?? 0;
+        const nextVersion = previousVersion + 1;
+        const versionTag = formatVersionTag(nextVersion);
+        const relPath = `audio/${action.id}/${versionTag}.${format}`;
+        const absPath = path.join(audioDir, action.id, `${versionTag}.${format}`);
+        await ensureDir(path.dirname(absPath));
+        await fs.writeFile(absPath, result.audio);
+
+        const audioUrl = mediaServingUrl(baseUrl, classroomId, relPath);
+        const generatedAt = new Date().toISOString();
+        const textHash = computeTextHash(speechAction.text);
+        const versionRecord: TTSVersionRecord = {
+          versionNo: nextVersion,
+          audioUrl,
+          textHash,
+          generatedAt,
+        };
+        const previousVersions = speechAction.tts?.versions ?? [];
+
         speechAction.audioId = audioId;
-        speechAction.audioUrl = mediaServingUrl(baseUrl, classroomId, `audio/${filename}`);
+        speechAction.audioUrl = audioUrl;
+        const ttsMeta: TTSMetadata = {
+          schemaVersion: 1,
+          providerId,
+          model: voice, // The provider model is implicit; voice identifies the model variant.
+          voice,
+          format,
+          ...(typeof speechAction.speed === 'number' ? { speed: speechAction.speed } : {}),
+          ...(teacherName ? { speakerName: teacherName } : {}),
+          textHash,
+          configVersion,
+          generatedAt,
+          currentVersion: nextVersion,
+          versions: [...previousVersions, versionRecord],
+        };
+        speechAction.tts = ttsMeta;
         generatedCount += 1;
         usedProviderId = providerId;
-        log.info(`Generated TTS [${providerId}]: ${filename} (${result.audio.length} bytes)`);
+        log.info(`Generated TTS [${providerId}]: ${relPath} (${result.audio.length} bytes)`);
       }
     }
   };

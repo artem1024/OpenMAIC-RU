@@ -35,14 +35,62 @@ export interface LaserAction extends ActionBase {
 
 // ==================== Synchronous actions ====================
 
+/**
+ * Per-version record for TTS audio history.
+ *
+ * `audioUrl` here is the versioned serving URL, e.g.
+ * `/api/classroom-media/{classroomId}/audio/{actionId}/v003.mp3`.
+ */
+export interface TTSVersionRecord {
+  versionNo: number;
+  audioUrl: string;
+  textHash: string;
+  generatedAt: string;
+}
+
+/**
+ * TTS metadata attached to a SpeechAction after server-side audio generation.
+ *
+ * - `textHash` is sha256 of the normalized speech text (trim, collapse
+ *   whitespace, lowercase). Used for idempotency: if the hash matches the
+ *   current entry, regen skips re-synthesis unless `force=true` is passed.
+ * - `versions[]` keeps the full history; `currentVersion` points to the
+ *   active one. Older versions stay on disk under their versioned path
+ *   (`audio/{actionId}/v{NNN}.mp3`) until orphan-GC removes them.
+ *
+ * Optional on `SpeechAction` for backwards compatibility with classrooms
+ * generated before the metadata layer.
+ */
+export interface TTSMetadata {
+  schemaVersion: 1;
+  providerId: string;
+  model: string;
+  voice: string;
+  format: string;
+  speed?: number;
+  speakerName?: string;
+  /** sha256(normalize(text)) — see computeTextHash. */
+  textHash: string;
+  /** Free-form provider-config version tag (e.g. ai-gateway commit hash). */
+  configVersion: string;
+  generatedAt: string;
+  currentVersion: number;
+  versions: TTSVersionRecord[];
+}
+
 /** Speech — teacher narration (wait for TTS to finish) */
 export interface SpeechAction extends ActionBase {
   type: 'speech';
   text: string;
   audioId?: string;
-  audioUrl?: string; // Server-generated TTS audio URL
+  audioUrl?: string; // Server-generated TTS audio URL (points to the current version)
   voice?: string;
   speed?: number; // default 1.0
+  /**
+   * Optional metadata describing the TTS generation. Absent on legacy
+   * classrooms; populated by `generateTTSForClassroom` and per-action regens.
+   */
+  tts?: TTSMetadata;
 }
 
 /** Open whiteboard (wait for animation) */

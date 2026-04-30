@@ -23,6 +23,7 @@ import { searchWithTavily, formatSearchResultsAsContext } from '@/lib/web-search
 import { persistClassroom } from '@/lib/server/classroom-storage';
 import {
   correctGeneratedImageAspectRatios,
+  createClassroomManifest,
   generateMediaForClassroom,
   removeSpeechVisualReferencesForRemovedMedia,
   replaceMediaPlaceholders,
@@ -777,6 +778,10 @@ export async function generateClassroom(
     throw new Error('No scenes were generated');
   }
 
+  // Manifest accumulates per-asset metadata across media + (future) TTS phases.
+  // Built up in-place by generateMediaForClassroom and persisted at the end.
+  const manifest = createClassroomManifest();
+
   // Phase: Media generation (after all scenes generated)
   if (input.enableImageGeneration || input.enableVideoGeneration) {
     await options.onProgress?.({
@@ -789,7 +794,7 @@ export async function generateClassroom(
 
     const mediaPhaseStart = Date.now();
     try {
-      const mediaMap = await generateMediaForClassroom(outlines, stageId, options.baseUrl);
+      const mediaMap = await generateMediaForClassroom(outlines, stageId, options.baseUrl, manifest);
       replaceMediaPlaceholders(scenes, mediaMap);
       const aspectCorrections = await correctGeneratedImageAspectRatios(scenes, stageId);
       const removedMedia = removeUnresolvedMediaPlaceholders(scenes);
@@ -847,6 +852,7 @@ export async function generateClassroom(
       id: stageId,
       stage,
       scenes,
+      manifest,
     },
     options.baseUrl,
   );

@@ -4,6 +4,7 @@ import { generateTTSForClassroom } from '@/lib/server/classroom-media-generation
 import {
   buildRequestOrigin,
   isValidClassroomId,
+  persistClassroom,
   readClassroom,
 } from '@/lib/server/classroom-storage';
 
@@ -13,9 +14,11 @@ export const maxDuration = 1800;
 // Перегенерирует ТОЛЬКО mp3-файлы озвучки для существующего classroom,
 // сохраняя сцены/слайды/контент без изменений. Используется когда озвучка
 // деградировала (например, cascade fallback на edge-tts из-за глюка Vertex),
-// а сам урок переделывать не нужно. Слайдовые layouts намеренно не трогаются —
-// запись JSON через persistClassroom тут не нужна, потому что audioId/audioUrl
-// зависят только от action.id и не меняются между запусками.
+// а сам урок переделывать не нужно. Слайдовые layouts намеренно не трогаются.
+//
+// С переходом на versioned paths (`audio/{actionId}/v{NNN}.mp3`) audioUrl
+// меняется при каждом регене, поэтому JSON нужно persist'ить, чтобы плеер
+// читал новые ссылки. TTS-метаданные (`speechAction.tts`) тоже обновляются.
 export async function POST(req: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
@@ -31,6 +34,19 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
 
     const baseUrl = buildRequestOrigin(req);
     const stats = await generateTTSForClassroom(classroom.scenes, id, baseUrl);
+
+    // Persist updated audioUrl + tts metadata back to disk so the player
+    // resolves the new versioned paths. Manifest (image/video) is preserved
+    // as-is — TTS regen does not touch media assets.
+    await persistClassroom(
+      {
+        id,
+        stage: classroom.stage,
+        scenes: classroom.scenes,
+        ...(classroom.manifest ? { manifest: classroom.manifest } : {}),
+      },
+      baseUrl,
+    );
 
     return apiSuccess({
       id,
