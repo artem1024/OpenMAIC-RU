@@ -14,9 +14,11 @@ import { CLASSROOMS_DIR } from '@/lib/server/classroom-storage';
 import {
   type AssetEntry,
   type ClassroomManifest,
+  type InteractiveSlideEntry,
   MANIFEST_SCHEMA_VERSION,
   formatVersionTag,
 } from '@/lib/types/manifest';
+import { postProcessInteractiveHtml } from '@/lib/generation/interactive-post-processor';
 import type { TTSMetadata, TTSVersionRecord } from '@/lib/types/action';
 import { generateImage } from '@/lib/media/image-providers';
 import { generateVideo, normalizeVideoOptions } from '@/lib/media/video-providers';
@@ -639,6 +641,34 @@ export function removeSpeechVisualReferencesForRemovedMedia(
 export interface TTSGenerationStats {
   count: number;
   providerId: TTSProviderId | null;
+  /**
+   * Per-action regeneration outcomes. Always present; for full-classroom runs
+   * it lists every speech action that received a fresh mp3.
+   */
+  regenerated: Array<{
+    actionId: string;
+    versionNo: number;
+    audioUrl: string;
+    textHash: string;
+  }>;
+  /**
+   * Speech actions whose TTS was deliberately not re-synthesized. Currently the
+   * only documented reason is `textHashMatch` (idempotency skip on partial
+   * regen). On full-classroom runs this is empty (force=true semantics).
+   */
+  skipped: Array<{ actionId: string; reason: 'textHashMatch' }>;
+}
+
+/** Options for partial / forced TTS regeneration. */
+export interface TTSRegenOptions {
+  /** Restrict regen to these speech action IDs. Empty/undefined → whole classroom. */
+  actionIds?: string[];
+  /**
+   * When true, bypass the textHash idempotency check and always re-synthesize
+   * (revoice case: same text, new voice/provider, or recovering from a corrupt
+   * mp3). Defaults to false.
+   */
+  force?: boolean;
 }
 
 export async function generateTTSForClassroom(
@@ -646,6 +676,7 @@ export async function generateTTSForClassroom(
   classroomId: string,
   baseUrl: string,
   teacherName?: string,
+  options?: TTSRegenOptions,
 ): Promise<TTSGenerationStats> {
   const audioDir = path.join(CLASSROOMS_DIR, classroomId, 'audio');
   await ensureDir(audioDir);
@@ -659,13 +690,20 @@ export async function generateTTSForClassroom(
   ) as TTSProviderId[];
   if (ttsProviderIds.length === 0) {
     log.warn('No server TTS provider configured, skipping TTS generation');
-    return { count: 0, providerId: null };
+    return { count: 0, providerId: null, regenerated: [], skipped: [] };
   }
 
   const primaryId = ttsProviderIds[0];
   const secondaryId = ttsProviderIds[1];
   let generatedCount = 0;
   let usedProviderId: TTSProviderId | null = null;
+  const regenerated: TTSGenerationStats['regenerated'] = [];
+  const skipped: TTSGenerationStats['skipped'] = [];
+  const skippedActionIds = new Set<string>();
+  const force = options?.force === true;
+  const actionIdFilter = options?.actionIds && options.actionIds.length > 0
+    ? new Set(options.actionIds)
+    : null;
 
   // configVersion is a free-form tag describing the provider config used for
   // this generation; for now we use the ai-gateway commit hash if available,
@@ -689,6 +727,23 @@ export async function generateTTSForClassroom(
         if (action.type !== 'speech' || !(action as SpeechAction).text) continue;
         const speechAction = action as SpeechAction;
         const audioId = `tts_${action.id}`;
+
+        // Partial regen: skip actions outside the requested set.
+        if (actionIdFilter && !actionIdFilter.has(action.id)) continue;
+
+        // textHash idempotency: if the text didn't change, don't burn a TTS
+        // call — leave the existing audio untouched. `force=true` opts out
+        // (revoice / corrupt-mp3 recovery / provider switch).
+        if (!force) {
+          const newHash = computeTextHash(speechAction.text);
+          if (speechAction.tts && speechAction.tts.textHash === newHash) {
+            if (!skippedActionIds.has(action.id)) {
+              skippedActionIds.add(action.id);
+              skipped.push({ actionId: action.id, reason: 'textHashMatch' });
+            }
+            continue;
+          }
+        }
 
         let result;
         if (providerId === 'gemini-tts') {
@@ -760,6 +815,12 @@ export async function generateTTSForClassroom(
         speechAction.tts = ttsMeta;
         generatedCount += 1;
         usedProviderId = providerId;
+        regenerated.push({
+          actionId: action.id,
+          versionNo: nextVersion,
+          audioUrl,
+          textHash,
+        });
         log.info(`Generated TTS [${providerId}]: ${relPath} (${result.audio.length} bytes)`);
       }
     }
@@ -770,7 +831,7 @@ export async function generateTTSForClassroom(
   } catch (err) {
     if (!secondaryId) {
       log.warn(`Classroom ${classroomId}: primary TTS "${primaryId}" failed and no secondary configured:`, err);
-      return { count: generatedCount, providerId: usedProviderId };
+      return { count: generatedCount, providerId: usedProviderId, regenerated, skipped };
     }
     log.warn(
       `Classroom ${classroomId}: primary TTS "${primaryId}" failed, cascading entire classroom to "${secondaryId}". Reason:`,
@@ -782,5 +843,402 @@ export async function generateTTSForClassroom(
       log.warn(`Classroom ${classroomId}: secondary TTS "${secondaryId}" also failed:`, err2);
     }
   }
-  return { count: generatedCount, providerId: usedProviderId };
+  return { count: generatedCount, providerId: usedProviderId, regenerated, skipped };
+}
+
+// ===========================================================================
+// Per-element / per-scene regen helpers (Wave 2 partial-regen endpoints)
+// ===========================================================================
+
+/**
+ * Defense-in-depth strip of embedding tags from LLM-authored interactive HTML
+ * before it's persisted to disk. The renderer also strips on read (see
+ * `components/scene-renderers/interactive-renderer.tsx → stripEmbeddingTags`)
+ * and runs the iframe sandboxed without `allow-same-origin`, so this is a
+ * third line of defense — not the primary safety boundary, but still
+ * cheap-to-keep.
+ *
+ * Mirrors the renderer-side regex set: `<iframe>`, `<object>`, `<embed>`,
+ * `<applet>` (open + close + self-closing variants).
+ */
+export function sanitizeInteractiveHtml(html: string): string {
+  // Protect <script> blocks so we don't accidentally rewrite tag-name strings
+  // that appear inside JS string literals.
+  const scripts: string[] = [];
+  let result = html.replace(/<script[\s>][\s\S]*?<\/script>/gi, (m) => {
+    scripts.push(m);
+    return `__SCRIPT_PLACEHOLDER_${scripts.length - 1}__`;
+  });
+  result = result.replace(/<(iframe|object|embed|applet)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
+  result = result.replace(/<(iframe|object|embed|applet)\b[^>]*\/?>(?!<\/\1>)/gi, '');
+  result = result.replace(/__SCRIPT_PLACEHOLDER_(\d+)__/g, (_, idx) => scripts[Number(idx)] ?? '');
+  return result;
+}
+
+/**
+ * Locate an `image` / `video` element on any slide-type scene's canvas.
+ * Returns `null` if no scene contains an element with the given id.
+ *
+ * Other element kinds (text, shape) are still returned (caller is expected
+ * to validate `element.type`), so the route handler can produce a precise
+ * 400 ("element exists but type X is not regen-eligible") rather than a 404.
+ */
+export function findCanvasElement(
+  scenes: Scene[],
+  elementId: string,
+): { scene: Scene; element: { id: string; type: string; src?: string } } | null {
+  for (const scene of scenes) {
+    if (scene.type !== 'slide') continue;
+    const canvas = (scene.content as { canvas?: { elements?: Array<{ id: string; type: string; src?: string }> } }).canvas;
+    const elements = canvas?.elements;
+    if (!Array.isArray(elements)) continue;
+    const el = elements.find((e) => e.id === elementId);
+    if (el) return { scene, element: el };
+  }
+  return null;
+}
+
+export interface AssetRegenResult {
+  elementId: string;
+  kind: 'image' | 'video';
+  versionNo: number;
+  src: string;
+  prompt: string;
+}
+
+/**
+ * Regenerate a single image or video element on a slide canvas.
+ *
+ * Prompt resolution:
+ *   - If `args.prompt` is provided, it overrides the saved manifest prompt
+ *     and gets persisted into `manifest.assets[id].prompt` for next time.
+ *   - Else falls back to `manifest.assets[id].prompt` (must exist).
+ *   - If neither is available, throws `Error('No prompt provided ...')`
+ *     which the route translates to 400.
+ *
+ * On success: writes `media/{elementId}/v{NNN}.{ext}`, updates the scene
+ * element's `src` to the relative serving URL, bumps `currentVersion` and
+ * appends a `versions[]` record. Caller is responsible for `persistClassroom`.
+ */
+export async function regenerateAssetElement(
+  scenes: Scene[],
+  manifest: ClassroomManifest,
+  classroomId: string,
+  baseUrl: string,
+  args: {
+    elementId: string;
+    prompt?: string;
+    params?: Record<string, unknown>;
+  },
+): Promise<AssetRegenResult> {
+  const found = findCanvasElement(scenes, args.elementId);
+  if (!found) {
+    throw new Error(`Element "${args.elementId}" not found on any slide scene`);
+  }
+  const { scene, element } = found;
+  if (element.type !== 'image' && element.type !== 'video') {
+    throw new Error(
+      `Element "${args.elementId}" has type "${element.type}"; only image/video supported`,
+    );
+  }
+  const kind = element.type as 'image' | 'video';
+
+  const existingEntry = manifest.assets[args.elementId];
+  const promptToUse = args.prompt ?? existingEntry?.prompt;
+  if (!promptToUse) {
+    throw new Error(
+      `No prompt provided for element "${args.elementId}" and no saved prompt in manifest`,
+    );
+  }
+  const paramsToUse: Record<string, unknown> = {
+    ...(existingEntry?.params ?? {}),
+    ...(args.params ?? {}),
+  };
+  if (!paramsToUse.aspectRatio) {
+    paramsToUse.aspectRatio = '16:9';
+  }
+
+  const mediaDir = path.join(CLASSROOMS_DIR, classroomId, 'media');
+  await ensureDir(mediaDir);
+
+  if (kind === 'image') {
+    const imageProviderIds = Object.keys(getServerImageProviders());
+    if (imageProviderIds.length === 0) {
+      throw new Error('No image provider configured');
+    }
+    const providerId = imageProviderIds[0] as ImageProviderId;
+    const apiKey = resolveImageApiKey(providerId);
+    if (!apiKey) {
+      throw new Error(`No API key for image provider "${providerId}"`);
+    }
+    const providerConfig = IMAGE_PROVIDERS[providerId];
+    const model = providerConfig?.models?.[0]?.id;
+
+    const writeOutcome = await withRetries(`image-regen ${args.elementId}`, async () => {
+      const result = await generateImage(
+        { providerId, apiKey, baseUrl: resolveImageBaseUrl(providerId), model },
+        {
+          prompt: promptToUse,
+          aspectRatio: ((paramsToUse.aspectRatio as string) || '16:9') as
+            | '16:9'
+            | '4:3'
+            | '1:1'
+            | '9:16',
+        },
+      );
+      let buf: Buffer;
+      let ext: string;
+      if (result.base64) {
+        buf = Buffer.from(result.base64, 'base64');
+        ext = 'png';
+      } else if (result.url) {
+        buf = await downloadToBuffer(result.url);
+        const urlExt = path.extname(new URL(result.url).pathname).replace('.', '');
+        ext = ['png', 'jpg', 'jpeg', 'webp'].includes(urlExt) ? urlExt : 'png';
+      } else {
+        throw new Error('Image generation returned no data (neither base64 nor url)');
+      }
+      const previousVersion = manifest.assets[args.elementId]?.currentVersion ?? 0;
+      const nextVersion = previousVersion + 1;
+      const versionTag = formatVersionTag(nextVersion);
+      const relPath = `media/${args.elementId}/${versionTag}.${ext}`;
+      const absPath = path.join(mediaDir, args.elementId, `${versionTag}.${ext}`);
+      await ensureDir(path.dirname(absPath));
+      await fs.writeFile(absPath, buf);
+      return { providerId, model: model ?? '', relPath, nextVersion };
+    });
+
+    const entry = ensureAssetEntry(manifest, args.elementId, {
+      kind: 'image',
+      sceneId: scene.id,
+      prompt: promptToUse,
+      provider: writeOutcome.providerId,
+      model: writeOutcome.model,
+      params: paramsToUse,
+    });
+    entry.currentVersion = writeOutcome.nextVersion;
+    entry.versions.push({
+      versionNo: writeOutcome.nextVersion,
+      path: writeOutcome.relPath,
+      promptUsed: promptToUse,
+      paramsUsed: paramsToUse,
+      generatedAt: new Date().toISOString(),
+    });
+    const src = mediaServingUrl(baseUrl, classroomId, writeOutcome.relPath);
+    (element as { src?: string }).src = src;
+    log.info(`Regenerated image: ${writeOutcome.relPath}`);
+    return {
+      elementId: args.elementId,
+      kind,
+      versionNo: writeOutcome.nextVersion,
+      src,
+      prompt: promptToUse,
+    };
+  }
+
+  // Video branch
+  const videoProviderIds = Object.keys(getServerVideoProviders());
+  if (videoProviderIds.length === 0) {
+    throw new Error('No video provider configured');
+  }
+  const providerId = videoProviderIds[0] as VideoProviderId;
+  const apiKey = resolveVideoApiKey(providerId);
+  if (!apiKey) {
+    throw new Error(`No API key for video provider "${providerId}"`);
+  }
+  const providerConfig = VIDEO_PROVIDERS[providerId];
+  const model = providerConfig?.models?.[0]?.id;
+  const normalized = normalizeVideoOptions(providerId, {
+    prompt: promptToUse,
+    aspectRatio: ((paramsToUse.aspectRatio as string) || '16:9') as '16:9' | '4:3' | '1:1' | '9:16',
+  });
+
+  const writeOutcome = await withRetries(`video-regen ${args.elementId}`, async () => {
+    const result = await generateVideo(
+      { providerId, apiKey, baseUrl: resolveVideoBaseUrl(providerId), model },
+      normalized,
+    );
+    const buf = await downloadToBuffer(result.url);
+    const previousVersion = manifest.assets[args.elementId]?.currentVersion ?? 0;
+    const nextVersion = previousVersion + 1;
+    const versionTag = formatVersionTag(nextVersion);
+    const relPath = `media/${args.elementId}/${versionTag}.mp4`;
+    const absPath = path.join(mediaDir, args.elementId, `${versionTag}.mp4`);
+    await ensureDir(path.dirname(absPath));
+    await fs.writeFile(absPath, buf);
+    return { providerId, model: model ?? '', relPath, nextVersion };
+  });
+
+  const entry = ensureAssetEntry(manifest, args.elementId, {
+    kind: 'video',
+    sceneId: scene.id,
+    prompt: promptToUse,
+    provider: writeOutcome.providerId,
+    model: writeOutcome.model,
+    params: paramsToUse,
+  });
+  entry.currentVersion = writeOutcome.nextVersion;
+  entry.versions.push({
+    versionNo: writeOutcome.nextVersion,
+    path: writeOutcome.relPath,
+    promptUsed: promptToUse,
+    paramsUsed: paramsToUse,
+    generatedAt: new Date().toISOString(),
+  });
+  const src = mediaServingUrl(baseUrl, classroomId, writeOutcome.relPath);
+  (element as { src?: string }).src = src;
+  log.info(`Regenerated video: ${writeOutcome.relPath}`);
+  return {
+    elementId: args.elementId,
+    kind,
+    versionNo: writeOutcome.nextVersion,
+    src,
+    prompt: promptToUse,
+  };
+}
+
+export interface InteractiveRegenResult {
+  sceneId: string;
+  versionNo: number;
+  htmlPath: string;
+}
+
+/**
+ * Regenerate the HTML for a single interactive scene.
+ *
+ * Prompt resolution mirrors `regenerateAssetElement`:
+ *   - `args.prompt` wins; persists into `manifest.interactiveSlides[id].prompt`.
+ *   - Falls back to saved prompt in manifest.
+ *   - Throws if neither (translated to 400 by route).
+ *
+ * The caller supplies `aiCall` (system, user) → text and a `modelLabel` for
+ * manifest bookkeeping. We extract the HTML body, sanitize for embedding
+ * tags, run the standard post-processor (LaTeX delim conversion + KaTeX
+ * inject), write to `interactive/{sceneId}/v{NNN}.html`, and update
+ * `scene.content.html` (renderer reads inline html from there).
+ */
+export async function regenerateInteractiveSlide(
+  scenes: Scene[],
+  manifest: ClassroomManifest,
+  classroomId: string,
+  args: {
+    sceneId: string;
+    prompt?: string;
+    aiCall: (system: string, user: string) => Promise<string>;
+    modelLabel: string;
+  },
+): Promise<InteractiveRegenResult> {
+  const scene = scenes.find((s) => s.id === args.sceneId);
+  if (!scene) {
+    throw new Error(`Scene "${args.sceneId}" not found`);
+  }
+  if (scene.type !== 'interactive') {
+    throw new Error(`Scene "${args.sceneId}" is not an interactive scene`);
+  }
+
+  const slidesMap: Record<string, InteractiveSlideEntry> =
+    manifest.interactiveSlides ?? (manifest.interactiveSlides = {});
+  const existingEntry = slidesMap[args.sceneId];
+  const promptToUse = args.prompt ?? existingEntry?.prompt;
+  if (!promptToUse) {
+    throw new Error(
+      `No prompt provided for scene "${args.sceneId}" and no saved prompt in manifest`,
+    );
+  }
+
+  // Minimal regen prompt: we don't carry the full SceneOutline (conceptName,
+  // keyPoints) across regen, so we use a focused single-shot HTML generation
+  // prompt. This is intentional — partial regen is "the user knows what they
+  // want, just the design idea changed".
+  const system =
+    'You are an expert frontend engineer. Generate a single self-contained ' +
+    'HTML5 document (with <!DOCTYPE html>) that implements the requested ' +
+    'interactive visualization. Use only inline <style> and <script> blocks. ' +
+    'Do NOT include <iframe>, <object>, <embed>, or <applet> tags. Output the ' +
+    'HTML document only — no surrounding prose, no markdown fences.';
+  const user = `Title: ${scene.title}\n\nDesign idea / requirements:\n${promptToUse}`;
+
+  log.info(`[interactive-regen ${classroomId}/${args.sceneId}] calling LLM (${args.modelLabel})`);
+  const llmResponse = await args.aiCall(system, user);
+
+  // Reuse existing extractor: tries <!DOCTYPE>/<html> markers, then code
+  // fences, then raw-trim. Keeps behavior identical to first-pass generation.
+  const rawHtml = extractInteractiveHtml(llmResponse);
+  if (!rawHtml) {
+    throw new Error(
+      `LLM response for scene "${args.sceneId}" did not contain a recognizable HTML document`,
+    );
+  }
+
+  const sanitized = sanitizeInteractiveHtml(rawHtml);
+  const processed = postProcessInteractiveHtml(sanitized);
+
+  const previousVersion = existingEntry?.currentVersion ?? 0;
+  const nextVersion = previousVersion + 1;
+  const versionTag = formatVersionTag(nextVersion);
+  const relPath = `interactive/${args.sceneId}/${versionTag}.html`;
+  const absPath = path.join(CLASSROOMS_DIR, classroomId, relPath);
+  await ensureDir(path.dirname(absPath));
+  await fs.writeFile(absPath, processed, 'utf-8');
+
+  // Update manifest entry
+  const entry: InteractiveSlideEntry = existingEntry ?? {
+    sceneId: args.sceneId,
+    prompt: promptToUse,
+    model: args.modelLabel,
+    currentVersion: 0,
+    versions: [],
+  };
+  entry.prompt = promptToUse;
+  entry.model = args.modelLabel;
+  entry.currentVersion = nextVersion;
+  entry.versions.push({
+    versionNo: nextVersion,
+    htmlPath: relPath,
+    prompt: promptToUse,
+    generatedAt: new Date().toISOString(),
+  });
+  slidesMap[args.sceneId] = entry;
+
+  // Renderer reads inline `content.html`; keep that in sync so the new
+  // version is shown without needing a separate fetch step.
+  const interactiveContent = scene.content as { type: 'interactive'; html?: string; url?: string };
+  interactiveContent.html = processed;
+
+  log.info(`Regenerated interactive HTML: ${relPath} (${processed.length} chars)`);
+  return {
+    sceneId: args.sceneId,
+    versionNo: nextVersion,
+    htmlPath: relPath,
+  };
+}
+
+/**
+ * Local copy of the HTML extractor used by the first-pass generator
+ * (`lib/generation/scene-generator.ts → extractHtml`). Duplicated rather
+ * than imported to avoid pulling the whole scene-generator graph (and its
+ * heavy SDK deps) into a partial-regen-only request.
+ */
+function extractInteractiveHtml(response: string): string | null {
+  const doctypeStart = response.indexOf('<!DOCTYPE html>');
+  const htmlTagStart = response.indexOf('<html');
+  const start = doctypeStart !== -1 ? doctypeStart : htmlTagStart;
+  if (start !== -1) {
+    const htmlEnd = response.lastIndexOf('</html>');
+    if (htmlEnd !== -1) {
+      return response.substring(start, htmlEnd + 7);
+    }
+  }
+  const codeBlockMatch = response.match(/```(?:html)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    const content = codeBlockMatch[1].trim();
+    if (content.includes('<html') || content.includes('<!DOCTYPE')) {
+      return content;
+    }
+  }
+  const trimmed = response.trim();
+  if (trimmed.startsWith('<!DOCTYPE') || trimmed.startsWith('<html')) {
+    return trimmed;
+  }
+  return null;
 }
