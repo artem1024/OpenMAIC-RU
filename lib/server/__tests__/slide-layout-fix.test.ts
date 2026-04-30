@@ -27,6 +27,7 @@ type CanvasElement = {
   height: number;
   content?: string;
   path?: string;
+  fill?: string;
 };
 
 function makeSceneWithElements(elements: CanvasElement[]): Scene {
@@ -396,5 +397,157 @@ describe('dropSevereFlowOverlaps', () => {
 
     fixSlideLayouts([makeSceneWithElements(els)]);
     expect(els.map((e) => e.id)).toEqual(['bullet_1', 'bullet_2']);
+  });
+});
+
+describe('decorative line repair', () => {
+  test('moves title underline after text height grows', () => {
+    const title: CanvasElement = {
+      id: 'title',
+      type: 'text',
+      left: 60,
+      top: 50,
+      width: 880,
+      height: 40,
+      content:
+        '<p style="font-size: 36px; font-weight: bold;">Длинный заголовок, который занимает больше одной строки на слайде</p>',
+    };
+    const underline: CanvasElement = {
+      id: 'underline',
+      type: 'shape',
+      left: 60,
+      top: 136,
+      width: 880,
+      height: 2,
+      path: 'M 0 0 L 1 0 L 1 1 L 0 1 Z',
+    };
+
+    const reports = fixSlideLayouts([makeSceneWithElements([title, underline])]);
+
+    expect(title.height).toBeGreaterThan(40);
+    expect(underline.top).toBeGreaterThanOrEqual(title.top + title.height + 8);
+    expect(reports[0]?.messages.some((m) => m.startsWith('fix-underline underline'))).toBe(true);
+  });
+
+  test('aligns detached vertical accent with the following text block', () => {
+    const accent: CanvasElement = {
+      id: 'accent',
+      type: 'shape',
+      left: 65,
+      top: 438,
+      width: 4,
+      height: 120,
+      fill: '#e67e22',
+      path: 'M 0 0 L 1 0 L 1 1 L 0 1 Z',
+    };
+    const text: CanvasElement = {
+      id: 'key_takeaways',
+      type: 'text',
+      left: 80,
+      top: 298,
+      width: 420,
+      height: 154,
+      content: '<p style="font-size: 18px;">Ключевые выводы</p>',
+    };
+
+    const reports = fixSlideLayouts([makeSceneWithElements([accent, text])]);
+
+    expect(accent.top).toBe(text.top);
+    expect(accent.height).toBe(text.height);
+    expect(reports[0]?.messages.some((m) => m.startsWith('fix-accent accent'))).toBe(true);
+  });
+
+  test('realigns two-column accent bars to their adjacent text blocks', () => {
+    const elements: CanvasElement[] = [
+      {
+        id: 'line_left_ok',
+        type: 'shape',
+        left: 45,
+        top: 237,
+        width: 4,
+        height: 56,
+        path: 'M 0 0 L 1 0 L 1 1 L 0 1 Z',
+      },
+      {
+        id: 'text_left_ok',
+        type: 'text',
+        left: 60,
+        top: 230,
+        width: 420,
+        height: 70,
+        content: '<p style="font-size: 18px;">Тезис слева</p>',
+      },
+      {
+        id: 'line_right_detached',
+        type: 'shape',
+        left: 505,
+        top: 302,
+        width: 4,
+        height: 56,
+        path: 'M 0 0 L 1 0 L 1 1 L 0 1 Z',
+      },
+      {
+        id: 'text_right',
+        type: 'text',
+        left: 520,
+        top: 158,
+        width: 420,
+        height: 70,
+        content: '<p style="font-size: 18px;">Тезис справа</p>',
+      },
+      {
+        id: 'line_left_detached',
+        type: 'shape',
+        left: 45,
+        top: 337,
+        width: 4,
+        height: 56,
+        path: 'M 0 0 L 1 0 L 1 1 L 0 1 Z',
+      },
+      {
+        id: 'text_left',
+        type: 'text',
+        left: 60,
+        top: 432,
+        width: 420,
+        height: 70,
+        content: '<p style="font-size: 18px;">Другой тезис слева</p>',
+      },
+    ];
+
+    fixSlideLayouts([makeSceneWithElements(elements)]);
+
+    expect(elements.find((e) => e.id === 'line_left_ok')?.top).toBe(230);
+    expect(elements.find((e) => e.id === 'line_left_ok')?.height).toBe(70);
+    expect(elements.find((e) => e.id === 'line_right_detached')?.top).toBe(158);
+    expect(elements.find((e) => e.id === 'line_right_detached')?.height).toBe(70);
+    expect(elements.find((e) => e.id === 'line_left_detached')?.top).toBe(432);
+    expect(elements.find((e) => e.id === 'line_left_detached')?.height).toBe(70);
+  });
+
+  test('does not snap a vertical accent to the main slide title', () => {
+    const accent: CanvasElement = {
+      id: 'accent',
+      type: 'shape',
+      left: 45,
+      top: 180,
+      width: 4,
+      height: 80,
+      path: 'M 0 0 L 1 0 L 1 1 L 0 1 Z',
+    };
+    const title: CanvasElement = {
+      id: 'title',
+      type: 'text',
+      left: 60,
+      top: 50,
+      width: 880,
+      height: 70,
+      content: '<p style="font-size: 36px; font-weight: bold;">Главный заголовок</p>',
+    };
+
+    fixSlideLayouts([makeSceneWithElements([accent, title])]);
+
+    expect(accent.top).toBe(180);
+    expect(accent.height).toBe(80);
   });
 });

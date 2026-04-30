@@ -11,10 +11,12 @@
  *                              and shift siblings down so they clear the title.
  *   2. grow text height      — expand text boxes whose content clearly needs
  *                              more visual height, capped to their container.
- *   3. clamp offscreen       — container-aware: if a card extends below the
+ *   3. repair decorations    — keep underlines and accent bars attached to
+ *                              the text they visually annotate.
+ *   4. clamp offscreen       — container-aware: if a card extends below the
  *                              viewport, shift the card plus all children up
  *                              together so relative positions are preserved.
- *   4. drop unreadable severe overlaps created by the safety clamps.
+ *   5. drop unreadable severe overlaps created by the safety clamps.
  */
 
 import type { Scene } from '@/lib/types/stage';
@@ -42,6 +44,13 @@ const BLOCK_TAG_RE = /<br\s*\/?>|<\/?(p|div|li|ul|ol|h[1-6]|blockquote)(\s[^>]*)
 const INLINE_TAG_RE = /<[^>]+>/g;
 const SEVERE_FLOW_OVERLAP_PX = 24;
 const FLOW_OVERLAP_X_RATIO = 0.2;
+const UNDERLINE_GAP = 10;
+const MIN_UNDERLINE_GAP = 8;
+const MAX_UNDERLINE_GAP = 28;
+const MAX_ACCENT_WIDTH = 10;
+const MIN_ACCENT_HEIGHT = 24;
+const MAX_ACCENT_HEIGHT = 220;
+const MAX_ACCENT_TEXT_GAP = 80;
 
 function num(v: unknown, fallback = 0): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
@@ -297,6 +306,130 @@ function growTextHeight(elements: AnyElement[], vpH: number, report: string[]): 
   return changed;
 }
 
+function stripHtml(content: unknown): string {
+  return typeof content === 'string' ? content.replace(STRIP_TAGS, '').trim() : '';
+}
+
+function isHorizontalUnderline(e: AnyElement): boolean {
+  if (e.type !== 'shape') return false;
+  if (h(e) <= 0 || w(e) <= 0) return false;
+  return h(e) <= 6 && w(e) >= 80 && w(e) >= h(e) * 20;
+}
+
+function isVerticalAccent(e: AnyElement): boolean {
+  if (e.type !== 'shape') return false;
+  if (h(e) <= 0 || w(e) <= 0) return false;
+  return w(e) <= MAX_ACCENT_WIDTH && h(e) >= MIN_ACCENT_HEIGHT && h(e) <= MAX_ACCENT_HEIGHT;
+}
+
+function isAccentTextCandidate(line: AnyElement, text: AnyElement): boolean {
+  if (text.type !== 'text') return false;
+  if (!stripHtml(text.content)) return false;
+  if (w(text) < 80 || h(text) < 20 || h(text) > MAX_ACCENT_HEIGHT) return false;
+
+  // Do not snap sidebar accents to the main slide title.
+  if (top(text) < 120 && w(text) > 600) return false;
+
+  const gapX = left(text) - right(line);
+  return gapX >= -2 && gapX <= MAX_ACCENT_TEXT_GAP;
+}
+
+function fixHorizontalUnderlines(elements: AnyElement[], vpH: number, report: string[]): number {
+  let changed = 0;
+  for (const line of elements) {
+    if (!isHorizontalUnderline(line)) continue;
+
+    let best: AnyElement | null = null;
+    let bestScore = Number.POSITIVE_INFINITY;
+    for (const text of elements) {
+      if (text.type !== 'text' || !stripHtml(text.content)) continue;
+      if (top(line) < top(text) + Math.min(24, h(text) * 0.25)) continue;
+      const xo = xOverlap(line, text);
+      if (xo < Math.min(w(line), w(text)) * 0.45) continue;
+      const gap = top(line) - bottom(text);
+      if (gap < -Math.min(120, h(text)) || gap > 80) continue;
+      const score = Math.abs(gap - UNDERLINE_GAP) + Math.abs(left(line) - left(text)) * 0.01;
+      if (score < bestScore) {
+        best = text;
+        bestScore = score;
+      }
+    }
+    if (!best) continue;
+
+    const currentGap = top(line) - bottom(best);
+    if (currentGap >= MIN_UNDERLINE_GAP && currentGap <= MAX_UNDERLINE_GAP) continue;
+
+    const oldTop = top(line);
+    const nextTop = Math.min(vpH - h(line) - MARGIN, bottom(best) + UNDERLINE_GAP);
+    if (Math.abs(nextTop - oldTop) < 1) continue;
+    line.top = nextTop;
+    report.push(
+      `fix-underline ${line.id}: top ${oldTop}→${nextTop} after ${best.id} (gap ${currentGap}→${UNDERLINE_GAP})`,
+    );
+    changed += 1;
+  }
+  return changed;
+}
+
+function scoreAccentTarget(line: AnyElement, text: AnyElement): number {
+  const gapX = Math.max(0, left(text) - right(line));
+  const topDelta = Math.abs(top(line) - top(text));
+  const centerDelta = Math.abs(top(line) + h(line) / 2 - (top(text) + h(text) / 2));
+  const overlap = yOverlap(line, text);
+  return gapX * 2 + topDelta + centerDelta * 0.35 - overlap * 0.5;
+}
+
+function findAccentTarget(
+  line: AnyElement,
+  elements: AnyElement[],
+  lineIndex: number,
+): AnyElement | null {
+  for (let i = lineIndex + 1; i < Math.min(elements.length, lineIndex + 4); i += 1) {
+    const candidate = elements[i];
+    if (!isAccentTextCandidate(line, candidate)) continue;
+    if (Math.abs(top(line) - top(candidate)) > 260 && yOverlap(line, candidate) <= 0) continue;
+    return candidate;
+  }
+
+  let best: AnyElement | null = null;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const candidate of elements) {
+    if (!isAccentTextCandidate(line, candidate)) continue;
+    const topDelta = Math.abs(top(line) - top(candidate));
+    const centerDelta = Math.abs(top(line) + h(line) / 2 - (top(candidate) + h(candidate) / 2));
+    if (topDelta > 180 && centerDelta > 180 && yOverlap(line, candidate) <= 0) continue;
+    const score = scoreAccentTarget(line, candidate);
+    if (score < bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+function fixVerticalAccents(elements: AnyElement[], report: string[]): number {
+  let changed = 0;
+  for (const [index, line] of elements.entries()) {
+    if (!isVerticalAccent(line)) continue;
+    const target = findAccentTarget(line, elements, index);
+    if (!target) continue;
+
+    const oldTop = top(line);
+    const oldH = h(line);
+    const nextTop = top(target);
+    const nextH = h(target);
+    if (Math.abs(oldTop - nextTop) < 1 && Math.abs(oldH - nextH) < 1) continue;
+
+    line.top = nextTop;
+    line.height = nextH;
+    report.push(
+      `fix-accent ${line.id}: top ${oldTop}→${nextTop}, h ${oldH}→${nextH} near ${target.id}`,
+    );
+    changed += 1;
+  }
+  return changed;
+}
+
 const SATELLITE_GAP = 20;
 const DECOR_HEIGHT = 12;
 
@@ -548,8 +681,11 @@ export function fixSlideLayouts(scenes: Scene[]): LayoutFixReport[] {
     let changes = 0;
     changes += titleAtBottomSwap(canvas.elements, messages);
     changes += growTextHeight(canvas.elements, vpH, messages);
+    changes += fixHorizontalUnderlines(canvas.elements, vpH, messages);
     changes += clampOffscreen(canvas.elements, vpH, messages);
     changes += autoShrinkTexts(canvas.elements, vpH, messages);
+    changes += fixHorizontalUnderlines(canvas.elements, vpH, messages);
+    changes += fixVerticalAccents(canvas.elements, messages);
     const droppedIds = dropSevereFlowOverlaps(canvas.elements, messages);
     changes += droppedIds.size;
     changes += removeActionsForDroppedElements(scene, droppedIds, messages);
