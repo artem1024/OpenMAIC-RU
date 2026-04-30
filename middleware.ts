@@ -5,9 +5,15 @@ export function middleware(request: NextRequest) {
   // Если INTERNAL_ACCESS_KEY не задан — middleware пропускает все запросы (обратная совместимость).
   const internalKey = process.env.INTERNAL_ACCESS_KEY;
   if (internalKey && request.nextUrl.pathname.startsWith('/api/')) {
-    const provided = request.headers.get('X-Internal-Key');
-    if (provided !== internalKey) {
-      return new NextResponse('Forbidden', { status: 403 });
+    // Carve-out: /api/schema/classroom публикуется свободно, если SCHEMA_PUBLIC=1.
+    // Используется osvaivai как контракт-источник; см. app/api/schema/classroom/route.ts.
+    const isSchemaRoute = request.nextUrl.pathname === '/api/schema/classroom';
+    const schemaPublic = process.env.SCHEMA_PUBLIC === '1';
+    if (!(isSchemaRoute && schemaPublic)) {
+      const provided = request.headers.get('X-Internal-Key');
+      if (provided !== internalKey) {
+        return new NextResponse('Forbidden', { status: 403 });
+      }
     }
   }
 

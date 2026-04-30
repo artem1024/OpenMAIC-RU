@@ -1,0 +1,3048 @@
+{
+    "$ref": "#/definitions/PersistedClassroomData",
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "definitions": {
+        "Action": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/SpotlightAction"
+                },
+                {
+                    "$ref": "#/definitions/LaserAction"
+                },
+                {
+                    "$ref": "#/definitions/SpeechAction"
+                },
+                {
+                    "$ref": "#/definitions/WbOpenAction"
+                },
+                {
+                    "$ref": "#/definitions/WbDrawTextAction"
+                },
+                {
+                    "$ref": "#/definitions/WbDrawShapeAction"
+                },
+                {
+                    "$ref": "#/definitions/WbDrawChartAction"
+                },
+                {
+                    "$ref": "#/definitions/WbDrawLatexAction"
+                },
+                {
+                    "$ref": "#/definitions/WbDrawTableAction"
+                },
+                {
+                    "$ref": "#/definitions/WbDrawLineAction"
+                },
+                {
+                    "$ref": "#/definitions/WbClearAction"
+                },
+                {
+                    "$ref": "#/definitions/WbDeleteAction"
+                },
+                {
+                    "$ref": "#/definitions/WbCloseAction"
+                },
+                {
+                    "$ref": "#/definitions/PlayVideoAction"
+                },
+                {
+                    "$ref": "#/definitions/DiscussionAction"
+                }
+            ]
+        },
+        "AnimationTrigger": {
+            "enum": [
+                "auto",
+                "click",
+                "meantime"
+            ],
+            "type": "string"
+        },
+        "AnimationType": {
+            "enum": [
+                "attention",
+                "in",
+                "out"
+            ],
+            "type": "string"
+        },
+        "ChartData": {
+            "properties": {
+                "labels": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "legends": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "series": {
+                    "items": {
+                        "items": {
+                            "type": "number"
+                        },
+                        "type": "array"
+                    },
+                    "type": "array"
+                }
+            },
+            "required": [
+                "labels",
+                "legends",
+                "series"
+            ],
+            "type": "object"
+        },
+        "ChartOptions": {
+            "$ref": "#/definitions/ChartOptions_1"
+        },
+        "ChartOptions_1": {
+            "properties": {
+                "lineSmooth": {
+                    "type": "boolean"
+                },
+                "stack": {
+                    "type": "boolean"
+                }
+            },
+            "type": "object"
+        },
+        "ChartType": {
+            "enum": [
+                "area",
+                "bar",
+                "column",
+                "line",
+                "pie",
+                "radar",
+                "ring",
+                "scatter"
+            ],
+            "type": "string"
+        },
+        "ClassroomManifest": {
+            "$ref": "#/definitions/%7BschemaVersion%3A1%3Bassets%3ARecord%3Cstring%2C%7Bkind%3A%22image%22%7C%22video%22%3BelementId%3Astring%3BsceneId%3Astring%3Bprompt%3Astring%3Bprovider%3Astring%3Bmodel%3Astring%3Bparams%3ARecord%3Cstring%2Cunknown%3E%3BcurrentVersion%3Anumber%3Bversions%3A%7BversionNo%3Anumber%3Bpath%3Astring%3BpromptUsed%3Astring%3BparamsUsed%3ARecord%3Cstring%2Cunknown%3E%3BgeneratedAt%3Astring%3B%7D%5B%5D%3B%7D%3E%3BinteractiveSlides%3F%3ARecord%3Cstring%2C%7BsceneId%3Astring%3Bprompt%3Astring%3Bmodel%3Astring%3BcurrentVersion%3Anumber%3Bversions%3A%7BversionNo%3Anumber%3BhtmlPath%3Astring%3Bprompt%3Astring%3BgeneratedAt%3Astring%3B%7D%5B%5D%3B%7D%3E%7Cundefined%3B%7D"
+        },
+        "DiscussionAction": {
+            "description": "Discussion — trigger a roundtable discussion",
+            "properties": {
+                "agentId": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "prompt": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "topic": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "discussion",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "topic",
+                "type"
+            ],
+            "type": "object"
+        },
+        "ElementLinkType": {
+            "enum": [
+                "slide",
+                "web"
+            ],
+            "type": "string"
+        },
+        "Gradient": {
+            "$ref": "#/definitions/Gradient_1"
+        },
+        "GradientType": {
+            "description": "渐变\n\ntype: 渐变类型（径向、线性）\n\ncolors: 渐变颜色列表（pos: 百分比位置；color: 颜色）\n\nrotate: 渐变角度（线性渐变）",
+            "enum": [
+                "linear",
+                "radial"
+            ],
+            "type": "string"
+        },
+        "Gradient_1": {
+            "properties": {
+                "colors": {
+                    "items": {
+                        "properties": {
+                            "color": {
+                                "type": "string"
+                            },
+                            "pos": {
+                                "type": "number"
+                            }
+                        },
+                        "required": [
+                            "color",
+                            "pos"
+                        ],
+                        "type": "object"
+                    },
+                    "type": "array"
+                },
+                "rotate": {
+                    "type": "number"
+                },
+                "type": {
+                    "$ref": "#/definitions/GradientType"
+                }
+            },
+            "required": [
+                "colors",
+                "rotate",
+                "type"
+            ],
+            "type": "object"
+        },
+        "ImageClipDataRange": {
+            "items": [
+                {
+                    "items": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "number"
+                        }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                },
+                {
+                    "items": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "number"
+                        }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                }
+            ],
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+        },
+        "ImageElementClip": {
+            "$ref": "#/definitions/ImageElementClip_1",
+            "description": "图片裁剪\n\nrange: 裁剪范围，例如：[[10, 10], [90, 90]] 表示裁取原图从左上角 10%, 10% 到 90%, 90% 的范围\n\nshape: 裁剪形状，见 configs/image-clip.ts CLIPPATHS"
+        },
+        "ImageElementClip_1": {
+            "description": "图片裁剪\n\nrange: 裁剪范围，例如：[[10, 10], [90, 90]] 表示裁取原图从左上角 10%, 10% 到 90%, 90% 的范围\n\nshape: 裁剪形状，见 configs/image-clip.ts CLIPPATHS",
+            "properties": {
+                "range": {
+                    "$ref": "#/definitions/ImageClipDataRange"
+                },
+                "shape": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "range",
+                "shape"
+            ],
+            "type": "object"
+        },
+        "ImageElementFilters": {
+            "$ref": "#/definitions/ImageElementFilters_1"
+        },
+        "ImageElementFilters_1": {
+            "properties": {
+                "blur": {
+                    "type": "string"
+                },
+                "brightness": {
+                    "type": "string"
+                },
+                "contrast": {
+                    "type": "string"
+                },
+                "grayscale": {
+                    "type": "string"
+                },
+                "hue-rotate": {
+                    "type": "string"
+                },
+                "invert": {
+                    "type": "string"
+                },
+                "opacity": {
+                    "type": "string"
+                },
+                "saturate": {
+                    "type": "string"
+                },
+                "sepia": {
+                    "type": "string"
+                }
+            },
+            "type": "object"
+        },
+        "ImageType": {
+            "enum": [
+                "background",
+                "itemFigure",
+                "pageFigure"
+            ],
+            "type": "string"
+        },
+        "InteractiveContent": {
+            "description": "Interactive content - Interactive web page (iframe)",
+            "properties": {
+                "html": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "interactive",
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "type",
+                "url"
+            ],
+            "type": "object"
+        },
+        "LaserAction": {
+            "description": "Laser — point at an element with a laser effect",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "elementId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "laser",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "elementId",
+                "id",
+                "type"
+            ],
+            "type": "object"
+        },
+        "LinePoint": {
+            "enum": [
+                "",
+                "arrow",
+                "dot"
+            ],
+            "type": "string"
+        },
+        "LineStyleType": {
+            "enum": [
+                "dashed",
+                "dotted",
+                "solid"
+            ],
+            "type": "string"
+        },
+        "LineStyleType_1": {
+            "enum": [
+                "dashed",
+                "dotted",
+                "solid"
+            ],
+            "type": "string"
+        },
+        "PBLAgent": {
+            "properties": {
+                "actor_role": {
+                    "type": "string"
+                },
+                "default_mode": {
+                    "type": "string"
+                },
+                "delay_time": {
+                    "type": "number"
+                },
+                "env": {
+                    "$ref": "#/definitions/Record"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_system_agent": {
+                    "type": "boolean"
+                },
+                "is_user_role": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "role_division": {
+                    "$ref": "#/definitions/PBLRoleDivision"
+                },
+                "system_prompt": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "actor_role",
+                "default_mode",
+                "delay_time",
+                "env",
+                "is_active",
+                "is_system_agent",
+                "is_user_role",
+                "name",
+                "role_division",
+                "system_prompt"
+            ],
+            "type": "object"
+        },
+        "PBLChat": {
+            "properties": {
+                "messages": {
+                    "items": {
+                        "$ref": "#/definitions/PBLChatMessage"
+                    },
+                    "type": "array"
+                }
+            },
+            "required": [
+                "messages"
+            ],
+            "type": "object"
+        },
+        "PBLChatMessage": {
+            "properties": {
+                "agent_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "read_by": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "timestamp": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "agent_name",
+                "id",
+                "message",
+                "read_by",
+                "timestamp"
+            ],
+            "type": "object"
+        },
+        "PBLContent": {
+            "description": "PBL content - Project-based learning",
+            "properties": {
+                "projectConfig": {
+                    "$ref": "#/definitions/PBLProjectConfig"
+                },
+                "type": {
+                    "const": "pbl",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "projectConfig",
+                "type"
+            ],
+            "type": "object"
+        },
+        "PBLIssue": {
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "generated_questions": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "index": {
+                    "type": "number"
+                },
+                "is_active": {
+                    "type": "boolean"
+                },
+                "is_done": {
+                    "type": "boolean"
+                },
+                "judge_agent_name": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "parent_issue": {
+                    "type": [
+                        "null",
+                        "string"
+                    ]
+                },
+                "participants": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "person_in_charge": {
+                    "type": "string"
+                },
+                "question_agent_name": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "description",
+                "generated_questions",
+                "id",
+                "index",
+                "is_active",
+                "is_done",
+                "judge_agent_name",
+                "notes",
+                "parent_issue",
+                "participants",
+                "person_in_charge",
+                "question_agent_name",
+                "title"
+            ],
+            "type": "object"
+        },
+        "PBLIssueboard": {
+            "properties": {
+                "agent_ids": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "current_issue_id": {
+                    "type": [
+                        "null",
+                        "string"
+                    ]
+                },
+                "issues": {
+                    "items": {
+                        "$ref": "#/definitions/PBLIssue"
+                    },
+                    "type": "array"
+                }
+            },
+            "required": [
+                "agent_ids",
+                "current_issue_id",
+                "issues"
+            ],
+            "type": "object"
+        },
+        "PBLProjectConfig": {
+            "properties": {
+                "agents": {
+                    "items": {
+                        "$ref": "#/definitions/PBLAgent"
+                    },
+                    "type": "array"
+                },
+                "chat": {
+                    "$ref": "#/definitions/PBLChat"
+                },
+                "issueboard": {
+                    "$ref": "#/definitions/PBLIssueboard"
+                },
+                "projectInfo": {
+                    "$ref": "#/definitions/PBLProjectInfo"
+                },
+                "selectedRole": {
+                    "type": [
+                        "null",
+                        "string"
+                    ]
+                }
+            },
+            "required": [
+                "agents",
+                "chat",
+                "issueboard",
+                "projectInfo"
+            ],
+            "type": "object"
+        },
+        "PBLProjectInfo": {
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "description",
+                "title"
+            ],
+            "type": "object"
+        },
+        "PBLRoleDivision": {
+            "enum": [
+                "development",
+                "management"
+            ],
+            "type": "string"
+        },
+        "PPTAnimation": {
+            "description": "元素动画\n\nid: 动画id\n\nelId: 元素ID\n\neffect: 动画效果\n\ntype: 动画类型（入场、退场、强调）\n\nduration: 动画持续时间\n\ntrigger: 动画触发方式(click - 单击时、meantime - 与上一动画同时、auto - 上一动画之后)",
+            "properties": {
+                "duration": {
+                    "type": "number"
+                },
+                "effect": {
+                    "type": "string"
+                },
+                "elId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "trigger": {
+                    "$ref": "#/definitions/AnimationTrigger"
+                },
+                "type": {
+                    "$ref": "#/definitions/AnimationType"
+                }
+            },
+            "required": [
+                "duration",
+                "effect",
+                "elId",
+                "id",
+                "trigger",
+                "type"
+            ],
+            "type": "object"
+        },
+        "PPTAudioElement": {
+            "description": "音频元素\n\ntype: 元素类型（audio）\n\nfixedRatio: 固定图标宽高比例\n\ncolor: 图标颜色\n\nloop: 循环播放\n\nautoplay: 自动播放\n\nsrc: 音频地址\n\next: 音频后缀，当资源链接缺少后缀时用该字段确认资源类型",
+            "properties": {
+                "autoplay": {
+                    "type": "boolean"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "ext": {
+                    "type": "string"
+                },
+                "fixedRatio": {
+                    "type": "boolean"
+                },
+                "groupId": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "left": {
+                    "type": "number"
+                },
+                "link": {
+                    "$ref": "#/definitions/PPTElementLink"
+                },
+                "lock": {
+                    "type": "boolean"
+                },
+                "loop": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "rotate": {
+                    "type": "number"
+                },
+                "src": {
+                    "type": "string"
+                },
+                "top": {
+                    "type": "number"
+                },
+                "type": {
+                    "const": "audio",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "autoplay",
+                "color",
+                "fixedRatio",
+                "height",
+                "id",
+                "left",
+                "loop",
+                "rotate",
+                "src",
+                "top",
+                "type",
+                "width"
+            ],
+            "type": "object"
+        },
+        "PPTChartElement": {
+            "description": "图表元素\n\ntype: 元素类型（chart）\n\nfill?: 填充色\n\nchartType: 图表基础类型（bar/line/pie），所有图表类型都是由这三种基本类型衍生而来\n\ndata: 图表数据\n\noptions: 扩展选项\n\noutline?: 边框\n\nthemeColors: 主题色\n\ntextColor?: 坐标和文字颜色\n\nlineColor?: 网格颜色",
+            "properties": {
+                "chartType": {
+                    "$ref": "#/definitions/ChartType"
+                },
+                "data": {
+                    "$ref": "#/definitions/ChartData"
+                },
+                "fill": {
+                    "type": "string"
+                },
+                "groupId": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "left": {
+                    "type": "number"
+                },
+                "lineColor": {
+                    "type": "string"
+                },
+                "link": {
+                    "$ref": "#/definitions/PPTElementLink"
+                },
+                "lock": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "options": {
+                    "$ref": "#/definitions/ChartOptions"
+                },
+                "outline": {
+                    "$ref": "#/definitions/PPTElementOutline"
+                },
+                "rotate": {
+                    "type": "number"
+                },
+                "textColor": {
+                    "type": "string"
+                },
+                "themeColors": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "top": {
+                    "type": "number"
+                },
+                "type": {
+                    "const": "chart",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "chartType",
+                "data",
+                "height",
+                "id",
+                "left",
+                "rotate",
+                "themeColors",
+                "top",
+                "type",
+                "width"
+            ],
+            "type": "object"
+        },
+        "PPTElement": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/PPTTextElement"
+                },
+                {
+                    "$ref": "#/definitions/PPTImageElement"
+                },
+                {
+                    "$ref": "#/definitions/PPTShapeElement"
+                },
+                {
+                    "$ref": "#/definitions/PPTLineElement"
+                },
+                {
+                    "$ref": "#/definitions/PPTChartElement"
+                },
+                {
+                    "$ref": "#/definitions/PPTTableElement"
+                },
+                {
+                    "$ref": "#/definitions/PPTLatexElement"
+                },
+                {
+                    "$ref": "#/definitions/PPTVideoElement"
+                },
+                {
+                    "$ref": "#/definitions/PPTAudioElement"
+                }
+            ]
+        },
+        "PPTElementLink": {
+            "$ref": "#/definitions/PPTElementLink_1",
+            "description": "元素超链接\n\ntype: 链接类型（网页、幻灯片页面）\n\ntarget: 目标地址（网页链接、幻灯片页面ID）"
+        },
+        "PPTElementLink_1": {
+            "description": "元素超链接\n\ntype: 链接类型（网页、幻灯片页面）\n\ntarget: 目标地址（网页链接、幻灯片页面ID）",
+            "properties": {
+                "target": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/ElementLinkType"
+                }
+            },
+            "required": [
+                "target",
+                "type"
+            ],
+            "type": "object"
+        },
+        "PPTElementOutline": {
+            "$ref": "#/definitions/PPTElementOutline_1",
+            "description": "元素边框\n\nstyle?: 边框样式（实线或虚线）\n\nwidth?: 边框宽度\n\ncolor?: 边框颜色"
+        },
+        "PPTElementOutline_1": {
+            "description": "元素边框\n\nstyle?: 边框样式（实线或虚线）\n\nwidth?: 边框宽度\n\ncolor?: 边框颜色",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "style": {
+                    "$ref": "#/definitions/LineStyleType"
+                },
+                "width": {
+                    "type": "number"
+                }
+            },
+            "type": "object"
+        },
+        "PPTElementShadow": {
+            "$ref": "#/definitions/PPTElementShadow_1",
+            "description": "元素阴影\n\nh: 水平偏移量\n\nv: 垂直偏移量\n\nblur: 模糊程度\n\ncolor: 阴影颜色"
+        },
+        "PPTElementShadow_1": {
+            "description": "元素阴影\n\nh: 水平偏移量\n\nv: 垂直偏移量\n\nblur: 模糊程度\n\ncolor: 阴影颜色",
+            "properties": {
+                "blur": {
+                    "type": "number"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "h": {
+                    "type": "number"
+                },
+                "v": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "blur",
+                "color",
+                "h",
+                "v"
+            ],
+            "type": "object"
+        },
+        "PPTImageElement": {
+            "description": "图片元素\n\ntype: 元素类型（image）\n\nfixedRatio: 固定图片宽高比例\n\nsrc: 图片地址\n\noutline?: 边框\n\nfilters?: 图片滤镜\n\nclip?: 裁剪信息\n\nflipH?: 水平翻转\n\nflipV?: 垂直翻转\n\nshadow?: 阴影\n\nradius?: 圆角半径\n\ncolorMask?: 颜色蒙版\n\nimageType?: 图片类型",
+            "properties": {
+                "clip": {
+                    "$ref": "#/definitions/ImageElementClip"
+                },
+                "colorMask": {
+                    "type": "string"
+                },
+                "filters": {
+                    "$ref": "#/definitions/ImageElementFilters"
+                },
+                "fixedRatio": {
+                    "type": "boolean"
+                },
+                "flipH": {
+                    "type": "boolean"
+                },
+                "flipV": {
+                    "type": "boolean"
+                },
+                "groupId": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "imageType": {
+                    "$ref": "#/definitions/ImageType"
+                },
+                "left": {
+                    "type": "number"
+                },
+                "link": {
+                    "$ref": "#/definitions/PPTElementLink"
+                },
+                "lock": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "outline": {
+                    "$ref": "#/definitions/PPTElementOutline"
+                },
+                "radius": {
+                    "type": "number"
+                },
+                "rotate": {
+                    "type": "number"
+                },
+                "shadow": {
+                    "$ref": "#/definitions/PPTElementShadow"
+                },
+                "src": {
+                    "type": "string"
+                },
+                "top": {
+                    "type": "number"
+                },
+                "type": {
+                    "const": "image",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "fixedRatio",
+                "height",
+                "id",
+                "left",
+                "rotate",
+                "src",
+                "top",
+                "type",
+                "width"
+            ],
+            "type": "object"
+        },
+        "PPTLatexElement": {
+            "description": "LaTeX元素（公式）\n\ntype: 元素类型（latex）\n\nlatex: latex代码\n\nhtml: KaTeX渲染的HTML字符串（新版公式使用）\n\npath: svg path（旧版SVG渲染，向后兼容，可选）\n\ncolor: 颜色（旧版SVG渲染，向后兼容，可选）\n\nstrokeWidth: 路径宽度（旧版SVG渲染，向后兼容，可选）\n\nviewBox: SVG的viewBox属性（旧版SVG渲染，向后兼容，可选）\n\nfixedRatio: 固定形状宽高比例（可选）\n\nalign: 公式水平对齐方式（left/center/right，默认center）",
+            "properties": {
+                "align": {
+                    "enum": [
+                        "center",
+                        "left",
+                        "right"
+                    ],
+                    "type": "string"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "fixedRatio": {
+                    "type": "boolean"
+                },
+                "groupId": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "html": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "latex": {
+                    "type": "string"
+                },
+                "left": {
+                    "type": "number"
+                },
+                "link": {
+                    "$ref": "#/definitions/PPTElementLink"
+                },
+                "lock": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "rotate": {
+                    "type": "number"
+                },
+                "strokeWidth": {
+                    "type": "number"
+                },
+                "top": {
+                    "type": "number"
+                },
+                "type": {
+                    "const": "latex",
+                    "type": "string"
+                },
+                "viewBox": {
+                    "items": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "number"
+                        }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                },
+                "width": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "height",
+                "id",
+                "latex",
+                "left",
+                "rotate",
+                "top",
+                "type",
+                "width"
+            ],
+            "type": "object"
+        },
+        "PPTLineElement": {
+            "description": "线条元素\n\ntype: 元素类型（line）\n\nstart: 起点位置（[x, y]）\n\nend: 终点位置（[x, y]）\n\nstyle: 线条样式（实线、虚线、点线）\n\ncolor: 线条颜色\n\npoints: 端点样式（[起点样式, 终点样式]，可选：无、箭头、圆点）\n\nshadow?: 阴影\n\nbroken?: 折线控制点位置（[x, y]）\n\nbroken2?: 双折线控制点位置（[x, y]）\n\ncurve?: 二次曲线控制点位置（[x, y]）\n\ncubic?: 三次曲线控制点位置（[[x1, y1], [x2, y2]]）",
+            "properties": {
+                "broken": {
+                    "items": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "number"
+                        }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                },
+                "broken2": {
+                    "items": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "number"
+                        }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "cubic": {
+                    "items": [
+                        {
+                            "items": [
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "number"
+                                }
+                            ],
+                            "maxItems": 2,
+                            "minItems": 2,
+                            "type": "array"
+                        },
+                        {
+                            "items": [
+                                {
+                                    "type": "number"
+                                },
+                                {
+                                    "type": "number"
+                                }
+                            ],
+                            "maxItems": 2,
+                            "minItems": 2,
+                            "type": "array"
+                        }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                },
+                "curve": {
+                    "items": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "number"
+                        }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                },
+                "end": {
+                    "items": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "number"
+                        }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                },
+                "groupId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "left": {
+                    "type": "number"
+                },
+                "link": {
+                    "$ref": "#/definitions/PPTElementLink"
+                },
+                "lock": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "points": {
+                    "items": [
+                        {
+                            "$ref": "#/definitions/LinePoint"
+                        },
+                        {
+                            "$ref": "#/definitions/LinePoint"
+                        }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                },
+                "shadow": {
+                    "$ref": "#/definitions/PPTElementShadow"
+                },
+                "start": {
+                    "items": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "number"
+                        }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                },
+                "style": {
+                    "$ref": "#/definitions/LineStyleType_1"
+                },
+                "top": {
+                    "type": "number"
+                },
+                "type": {
+                    "const": "line",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "color",
+                "end",
+                "id",
+                "left",
+                "points",
+                "start",
+                "style",
+                "top",
+                "type",
+                "width"
+            ],
+            "type": "object"
+        },
+        "PPTShapeElement": {
+            "description": "形状元素\n\ntype: 元素类型（shape）\n\nviewBox: SVG的viewBox属性，例如 [1000, 1000] 表示 '0 0 1000 1000'\n\npath: 形状路径，SVG path 的 d 属性\n\nfixedRatio: 固定形状宽高比例\n\nfill: 填充，不存在渐变时生效\n\ngradient?: 渐变，该属性存在时将优先作为填充\n\npattern?: 图案，该属性存在时将优先作为填充\n\noutline?: 边框\n\nopacity?: 不透明度\n\nflipH?: 水平翻转\n\nflipV?: 垂直翻转\n\nshadow?: 阴影\n\nspecial?: 特殊形状（标记一些难以解析的形状，例如路径使用了 L Q C A 以外的类型，该类形状在导出后将变为图片的形式）\n\ntext?: 形状内文本\n\npathFormula?: 形状路径计算公式\n一般情况下，形状的大小变化时仅由宽高基于 viewBox 的缩放比例来调整形状，而 viewBox 本身和 path 不会变化，\n但也有一些形状希望能更精确的控制一些关键点的位置，此时就需要提供路径计算公式，通过在缩放时更新 viewBox 并重新计算 path 来重新绘制形状\n\nkeypoints?: 关键点位置百分比",
+            "properties": {
+                "fill": {
+                    "type": "string"
+                },
+                "fixedRatio": {
+                    "type": "boolean"
+                },
+                "flipH": {
+                    "type": "boolean"
+                },
+                "flipV": {
+                    "type": "boolean"
+                },
+                "gradient": {
+                    "$ref": "#/definitions/Gradient"
+                },
+                "groupId": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "keypoints": {
+                    "items": {
+                        "type": "number"
+                    },
+                    "type": "array"
+                },
+                "left": {
+                    "type": "number"
+                },
+                "link": {
+                    "$ref": "#/definitions/PPTElementLink"
+                },
+                "lock": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "opacity": {
+                    "type": "number"
+                },
+                "outline": {
+                    "$ref": "#/definitions/PPTElementOutline"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "pathFormula": {
+                    "$ref": "#/definitions/ShapePathFormulasKeys"
+                },
+                "pattern": {
+                    "type": "string"
+                },
+                "rotate": {
+                    "type": "number"
+                },
+                "shadow": {
+                    "$ref": "#/definitions/PPTElementShadow"
+                },
+                "special": {
+                    "type": "boolean"
+                },
+                "text": {
+                    "$ref": "#/definitions/ShapeText"
+                },
+                "top": {
+                    "type": "number"
+                },
+                "type": {
+                    "const": "shape",
+                    "type": "string"
+                },
+                "viewBox": {
+                    "items": [
+                        {
+                            "type": "number"
+                        },
+                        {
+                            "type": "number"
+                        }
+                    ],
+                    "maxItems": 2,
+                    "minItems": 2,
+                    "type": "array"
+                },
+                "width": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "fill",
+                "fixedRatio",
+                "height",
+                "id",
+                "left",
+                "path",
+                "rotate",
+                "top",
+                "type",
+                "viewBox",
+                "width"
+            ],
+            "type": "object"
+        },
+        "PPTTableElement": {
+            "description": "表格元素\n\ntype: 元素类型（table）\n\noutline: 边框\n\ntheme?: 主题\n\ncolWidths: 列宽数组，如[0.3, 0.5, 0.2]表示三列宽度分别占总宽度的30%, 50%, 20%\n\ncellMinHeight: 单元格最小高度\n\ndata: 表格数据",
+            "properties": {
+                "cellMinHeight": {
+                    "type": "number"
+                },
+                "colWidths": {
+                    "items": {
+                        "type": "number"
+                    },
+                    "type": "array"
+                },
+                "data": {
+                    "items": {
+                        "items": {
+                            "$ref": "#/definitions/TableCell"
+                        },
+                        "type": "array"
+                    },
+                    "type": "array"
+                },
+                "groupId": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "left": {
+                    "type": "number"
+                },
+                "link": {
+                    "$ref": "#/definitions/PPTElementLink"
+                },
+                "lock": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "outline": {
+                    "$ref": "#/definitions/PPTElementOutline_1"
+                },
+                "rotate": {
+                    "type": "number"
+                },
+                "theme": {
+                    "$ref": "#/definitions/TableTheme"
+                },
+                "top": {
+                    "type": "number"
+                },
+                "type": {
+                    "const": "table",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "cellMinHeight",
+                "colWidths",
+                "data",
+                "height",
+                "id",
+                "left",
+                "outline",
+                "rotate",
+                "top",
+                "type",
+                "width"
+            ],
+            "type": "object"
+        },
+        "PPTTextElement": {
+            "description": "文本元素\n\ntype: 元素类型（text）\n\ncontent: 文本内容（HTML字符串）\n\ndefaultFontName: 默认字体（会被文本内容中的HTML内联样式覆盖）\n\ndefaultColor: 默认颜色（会被文本内容中的HTML内联样式覆盖）\n\noutline?: 边框\n\nfill?: 填充色\n\nlineHeight?: 行高（倍），默认1.5\n\nwordSpace?: 字间距，默认0\n\nopacity?: 不透明度，默认1\n\nshadow?: 阴影\n\nparagraphSpace?: 段间距，默认 5px\n\nvertical?: 竖向文本\n\ntextType?: 文本类型",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "defaultColor": {
+                    "type": "string"
+                },
+                "defaultFontName": {
+                    "type": "string"
+                },
+                "fill": {
+                    "type": "string"
+                },
+                "groupId": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "left": {
+                    "type": "number"
+                },
+                "lineHeight": {
+                    "type": "number"
+                },
+                "link": {
+                    "$ref": "#/definitions/PPTElementLink"
+                },
+                "lock": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "opacity": {
+                    "type": "number"
+                },
+                "outline": {
+                    "$ref": "#/definitions/PPTElementOutline"
+                },
+                "paragraphSpace": {
+                    "type": "number"
+                },
+                "rotate": {
+                    "type": "number"
+                },
+                "shadow": {
+                    "$ref": "#/definitions/PPTElementShadow"
+                },
+                "textType": {
+                    "$ref": "#/definitions/TextType"
+                },
+                "top": {
+                    "type": "number"
+                },
+                "type": {
+                    "const": "text",
+                    "type": "string"
+                },
+                "vertical": {
+                    "type": "boolean"
+                },
+                "width": {
+                    "type": "number"
+                },
+                "wordSpace": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "content",
+                "defaultColor",
+                "defaultFontName",
+                "height",
+                "id",
+                "left",
+                "rotate",
+                "top",
+                "type",
+                "width"
+            ],
+            "type": "object"
+        },
+        "PPTVideoElement": {
+            "description": "视频元素\n\ntype: 元素类型（video）\n\nsrc: 视频地址\n\nautoplay: 自动播放\n\nposter: 预览封面\n\next: 视频后缀，当资源链接缺少后缀时用该字段确认资源类型",
+            "properties": {
+                "autoplay": {
+                    "type": "boolean"
+                },
+                "ext": {
+                    "type": "string"
+                },
+                "groupId": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "left": {
+                    "type": "number"
+                },
+                "link": {
+                    "$ref": "#/definitions/PPTElementLink"
+                },
+                "lock": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "poster": {
+                    "type": "string"
+                },
+                "rotate": {
+                    "type": "number"
+                },
+                "src": {
+                    "type": "string"
+                },
+                "top": {
+                    "type": "number"
+                },
+                "type": {
+                    "const": "video",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "autoplay",
+                "height",
+                "id",
+                "left",
+                "rotate",
+                "src",
+                "top",
+                "type",
+                "width"
+            ],
+            "type": "object"
+        },
+        "PersistedClassroomData": {
+            "properties": {
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "manifest": {
+                    "$ref": "#/definitions/ClassroomManifest",
+                    "description": "Optional asset manifest describing media (image/video) and interactive\nHTML versions. Absent on legacy classrooms generated before the manifest\nlayer; new generations and partial regens populate it. Readers MUST\ntolerate `manifest === undefined` for backwards compatibility."
+                },
+                "scenes": {
+                    "items": {
+                        "$ref": "#/definitions/Scene"
+                    },
+                    "type": "array"
+                },
+                "stage": {
+                    "$ref": "#/definitions/Stage"
+                }
+            },
+            "required": [
+                "createdAt",
+                "id",
+                "scenes",
+                "stage"
+            ],
+            "type": "object"
+        },
+        "PlayVideoAction": {
+            "description": "Play video — start playback of a video element on the slide",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "elementId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "play_video",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "elementId",
+                "id",
+                "type"
+            ],
+            "type": "object"
+        },
+        "QuizContent": {
+            "description": "Quiz content - React component props/data",
+            "properties": {
+                "questions": {
+                    "items": {
+                        "$ref": "#/definitions/QuizQuestion"
+                    },
+                    "type": "array"
+                },
+                "type": {
+                    "const": "quiz",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "questions",
+                "type"
+            ],
+            "type": "object"
+        },
+        "QuizOption": {
+            "properties": {
+                "label": {
+                    "type": "string"
+                },
+                "value": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "label",
+                "value"
+            ],
+            "type": "object"
+        },
+        "QuizQuestion": {
+            "properties": {
+                "analysis": {
+                    "type": "string"
+                },
+                "answer": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "commentPrompt": {
+                    "type": "string"
+                },
+                "hasAnswer": {
+                    "type": "boolean"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "options": {
+                    "items": {
+                        "$ref": "#/definitions/QuizOption"
+                    },
+                    "type": "array"
+                },
+                "points": {
+                    "type": "number"
+                },
+                "question": {
+                    "type": "string"
+                },
+                "type": {
+                    "enum": [
+                        "multiple",
+                        "short_answer",
+                        "single"
+                    ],
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "question",
+                "type"
+            ],
+            "type": "object"
+        },
+        "Record": {
+            "$ref": "#/definitions/__type"
+        },
+        "Record<string,{kind:\"image\"|\"video\";elementId:string;sceneId:string;prompt:string;provider:string;model:string;params:Record<string,unknown>;currentVersion:number;versions:{versionNo:number;path:string;promptUsed:string;paramsUsed:Record<string,unknown>;generatedAt:string;}[];}>": {
+            "type": "object"
+        },
+        "Record_1": {
+            "$ref": "#/definitions/__type_1"
+        },
+        "Scene": {
+            "description": "Scene - Represents a single page/scene in the course",
+            "properties": {
+                "actions": {
+                    "items": {
+                        "$ref": "#/definitions/Action"
+                    },
+                    "type": "array"
+                },
+                "content": {
+                    "$ref": "#/definitions/SceneContent"
+                },
+                "createdAt": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "multiAgent": {
+                    "properties": {
+                        "agentIds": {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        "directorPrompt": {
+                            "type": "string"
+                        },
+                        "enabled": {
+                            "type": "boolean"
+                        }
+                    },
+                    "required": [
+                        "agentIds",
+                        "enabled"
+                    ],
+                    "type": "object"
+                },
+                "order": {
+                    "type": "number"
+                },
+                "stageId": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "$ref": "#/definitions/SceneType"
+                },
+                "updatedAt": {
+                    "type": "number"
+                },
+                "whiteboards": {
+                    "items": {
+                        "$ref": "#/definitions/Slide"
+                    },
+                    "type": "array"
+                }
+            },
+            "required": [
+                "content",
+                "id",
+                "order",
+                "stageId",
+                "title",
+                "type"
+            ],
+            "type": "object"
+        },
+        "SceneContent": {
+            "anyOf": [
+                {
+                    "$ref": "#/definitions/SlideContent"
+                },
+                {
+                    "$ref": "#/definitions/QuizContent"
+                },
+                {
+                    "$ref": "#/definitions/InteractiveContent"
+                },
+                {
+                    "$ref": "#/definitions/PBLContent"
+                }
+            ],
+            "description": "Scene content based on type"
+        },
+        "SceneType": {
+            "enum": [
+                "interactive",
+                "pbl",
+                "quiz",
+                "slide"
+            ],
+            "type": "string"
+        },
+        "SectionTag": {
+            "$ref": "#/definitions/SectionTag_1"
+        },
+        "SectionTag_1": {
+            "properties": {
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id"
+            ],
+            "type": "object"
+        },
+        "ShapePathFormulasKeys": {
+            "enum": [
+                "L",
+                "bullet",
+                "cutRectDiagonal",
+                "cutRectSameSide",
+                "cutRectSingle",
+                "cutRoundRect",
+                "diagStripe",
+                "donut",
+                "indicator",
+                "message",
+                "parallelogramLeft",
+                "parallelogramRight",
+                "plus",
+                "ringRect",
+                "roundMessage",
+                "roundRect",
+                "roundRectDiagonal",
+                "roundRectSameSide",
+                "roundRectSingle",
+                "trapezoid",
+                "triangle"
+            ],
+            "type": "string"
+        },
+        "ShapeText": {
+            "$ref": "#/definitions/ShapeText_1",
+            "description": "形状内文本\n\ncontent: 文本内容（HTML字符串）\n\ndefaultFontName: 默认字体（会被文本内容中的HTML内联样式覆盖）\n\ndefaultColor: 默认颜色（会被文本内容中的HTML内联样式覆盖）\n\nalign: 文本对齐方向（垂直方向）\n\nlineHeight?: 行高（倍），默认1.5\n\nwordSpace?: 字间距，默认0\n\nparagraphSpace?: 段间距，默认 5px\n\ntype: 文本类型"
+        },
+        "ShapeTextAlign": {
+            "enum": [
+                "bottom",
+                "middle",
+                "top"
+            ],
+            "type": "string"
+        },
+        "ShapeText_1": {
+            "description": "形状内文本\n\ncontent: 文本内容（HTML字符串）\n\ndefaultFontName: 默认字体（会被文本内容中的HTML内联样式覆盖）\n\ndefaultColor: 默认颜色（会被文本内容中的HTML内联样式覆盖）\n\nalign: 文本对齐方向（垂直方向）\n\nlineHeight?: 行高（倍），默认1.5\n\nwordSpace?: 字间距，默认0\n\nparagraphSpace?: 段间距，默认 5px\n\ntype: 文本类型",
+            "properties": {
+                "align": {
+                    "$ref": "#/definitions/ShapeTextAlign"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "defaultColor": {
+                    "type": "string"
+                },
+                "defaultFontName": {
+                    "type": "string"
+                },
+                "lineHeight": {
+                    "type": "number"
+                },
+                "paragraphSpace": {
+                    "type": "number"
+                },
+                "type": {
+                    "$ref": "#/definitions/TextType"
+                },
+                "wordSpace": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "align",
+                "content",
+                "defaultColor",
+                "defaultFontName"
+            ],
+            "type": "object"
+        },
+        "Slide": {
+            "description": "幻灯片页面\n\nid: 页面ID\n\nviewportSize: 视口大小\n\nviewportRatio: 视口宽高比\n\ntheme: 幻灯片主题\n\nelements: 元素集合\n\nbackground?: 页面背景\n\nanimations?: 元素动画集合\n\nturningMode?: 翻页方式\n\nsectionTag?: 章节标签\n\ntype?: 页面类型",
+            "properties": {
+                "animations": {
+                    "items": {
+                        "$ref": "#/definitions/PPTAnimation"
+                    },
+                    "type": "array"
+                },
+                "background": {
+                    "$ref": "#/definitions/SlideBackground"
+                },
+                "elements": {
+                    "items": {
+                        "$ref": "#/definitions/PPTElement"
+                    },
+                    "type": "array"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "sectionTag": {
+                    "$ref": "#/definitions/SectionTag"
+                },
+                "theme": {
+                    "$ref": "#/definitions/SlideTheme"
+                },
+                "turningMode": {
+                    "$ref": "#/definitions/TurningMode"
+                },
+                "type": {
+                    "$ref": "#/definitions/SlideType"
+                },
+                "viewportRatio": {
+                    "type": "number"
+                },
+                "viewportSize": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "elements",
+                "id",
+                "theme",
+                "viewportRatio",
+                "viewportSize"
+            ],
+            "type": "object"
+        },
+        "SlideBackground": {
+            "$ref": "#/definitions/SlideBackground_1",
+            "description": "幻灯片背景\n\ntype: 背景类型（纯色、图片、渐变）\n\ncolor?: 背景颜色（纯色）\n\nimage?: 图片背景\n\ngradientType?: 渐变背景"
+        },
+        "SlideBackgroundImage": {
+            "$ref": "#/definitions/SlideBackgroundImage_1"
+        },
+        "SlideBackgroundImageSize": {
+            "enum": [
+                "contain",
+                "cover",
+                "repeat"
+            ],
+            "type": "string"
+        },
+        "SlideBackgroundImage_1": {
+            "properties": {
+                "size": {
+                    "$ref": "#/definitions/SlideBackgroundImageSize"
+                },
+                "src": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "size",
+                "src"
+            ],
+            "type": "object"
+        },
+        "SlideBackgroundType": {
+            "enum": [
+                "gradient",
+                "image",
+                "solid"
+            ],
+            "type": "string"
+        },
+        "SlideBackground_1": {
+            "description": "幻灯片背景\n\ntype: 背景类型（纯色、图片、渐变）\n\ncolor?: 背景颜色（纯色）\n\nimage?: 图片背景\n\ngradientType?: 渐变背景",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "gradient": {
+                    "$ref": "#/definitions/Gradient"
+                },
+                "image": {
+                    "$ref": "#/definitions/SlideBackgroundImage"
+                },
+                "type": {
+                    "$ref": "#/definitions/SlideBackgroundType"
+                }
+            },
+            "required": [
+                "type"
+            ],
+            "type": "object"
+        },
+        "SlideContent": {
+            "description": "Slide content - PPTist Canvas data",
+            "properties": {
+                "canvas": {
+                    "$ref": "#/definitions/Slide"
+                },
+                "type": {
+                    "const": "slide",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "canvas",
+                "type"
+            ],
+            "type": "object"
+        },
+        "SlideTheme": {
+            "description": "幻灯片主题\n\nbackgroundColor: 页面背景颜色\n\nthemeColor: 主题色，用于默认创建的形状颜色等\n\nfontColor: 字体颜色\n\nfontName: 字体",
+            "properties": {
+                "backgroundColor": {
+                    "type": "string"
+                },
+                "fontColor": {
+                    "type": "string"
+                },
+                "fontName": {
+                    "type": "string"
+                },
+                "outline": {
+                    "$ref": "#/definitions/PPTElementOutline"
+                },
+                "shadow": {
+                    "$ref": "#/definitions/PPTElementShadow"
+                },
+                "themeColors": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                }
+            },
+            "required": [
+                "backgroundColor",
+                "fontColor",
+                "fontName",
+                "themeColors"
+            ],
+            "type": "object"
+        },
+        "SlideType": {
+            "enum": [
+                "content",
+                "contents",
+                "cover",
+                "end",
+                "transition"
+            ],
+            "type": "string"
+        },
+        "SpeechAction": {
+            "description": "Speech — teacher narration (wait for TTS to finish)",
+            "properties": {
+                "audioId": {
+                    "type": "string"
+                },
+                "audioUrl": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "speed": {
+                    "type": "number"
+                },
+                "text": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "tts": {
+                    "$ref": "#/definitions/TTSMetadata",
+                    "description": "Optional metadata describing the TTS generation. Absent on legacy\nclassrooms; populated by `generateTTSForClassroom` and per-action regens."
+                },
+                "type": {
+                    "const": "speech",
+                    "type": "string"
+                },
+                "voice": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "text",
+                "type"
+            ],
+            "type": "object"
+        },
+        "SpotlightAction": {
+            "description": "Spotlight — focus on a single element, dim everything else",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "dimOpacity": {
+                    "type": "number"
+                },
+                "elementId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "spotlight",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "elementId",
+                "id",
+                "type"
+            ],
+            "type": "object"
+        },
+        "Stage": {
+            "description": "Stage - Represents the entire classroom/course",
+            "properties": {
+                "createdAt": {
+                    "type": "number"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "language": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "style": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "number"
+                },
+                "whiteboard": {
+                    "items": {
+                        "$ref": "#/definitions/Whiteboard"
+                    },
+                    "type": "array"
+                }
+            },
+            "required": [
+                "createdAt",
+                "id",
+                "name",
+                "updatedAt"
+            ],
+            "type": "object"
+        },
+        "TTSMetadata": {
+            "$ref": "#/definitions/TTSMetadata_1",
+            "description": "TTS metadata attached to a SpeechAction after server-side audio generation.\n\n- `textHash` is sha256 of the normalized speech text (trim, collapse\n  whitespace, lowercase). Used for idempotency: if the hash matches the\n  current entry, regen skips re-synthesis unless `force=true` is passed.\n- `versions[]` keeps the full history; `currentVersion` points to the\n  active one. Older versions stay on disk under their versioned path\n  (`audio/{actionId}/v{NNN}.mp3`) until orphan-GC removes them.\n\nOptional on `SpeechAction` for backwards compatibility with classrooms\ngenerated before the metadata layer."
+        },
+        "TTSMetadata_1": {
+            "description": "TTS metadata attached to a SpeechAction after server-side audio generation.\n\n- `textHash` is sha256 of the normalized speech text (trim, collapse\n  whitespace, lowercase). Used for idempotency: if the hash matches the\n  current entry, regen skips re-synthesis unless `force=true` is passed.\n- `versions[]` keeps the full history; `currentVersion` points to the\n  active one. Older versions stay on disk under their versioned path\n  (`audio/{actionId}/v{NNN}.mp3`) until orphan-GC removes them.\n\nOptional on `SpeechAction` for backwards compatibility with classrooms\ngenerated before the metadata layer.",
+            "properties": {
+                "configVersion": {
+                    "description": "Free-form provider-config version tag (e.g. ai-gateway commit hash).",
+                    "type": "string"
+                },
+                "currentVersion": {
+                    "type": "number"
+                },
+                "format": {
+                    "type": "string"
+                },
+                "generatedAt": {
+                    "type": "string"
+                },
+                "model": {
+                    "type": "string"
+                },
+                "providerId": {
+                    "type": "string"
+                },
+                "schemaVersion": {
+                    "const": 1,
+                    "type": "number"
+                },
+                "speakerName": {
+                    "type": "string"
+                },
+                "speed": {
+                    "type": "number"
+                },
+                "textHash": {
+                    "description": "sha256(normalize(text)) — see computeTextHash.",
+                    "type": "string"
+                },
+                "versions": {
+                    "items": {
+                        "$ref": "#/definitions/TTSVersionRecord"
+                    },
+                    "type": "array"
+                },
+                "voice": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "configVersion",
+                "currentVersion",
+                "format",
+                "generatedAt",
+                "model",
+                "providerId",
+                "schemaVersion",
+                "textHash",
+                "versions",
+                "voice"
+            ],
+            "type": "object"
+        },
+        "TTSVersionRecord": {
+            "description": "Per-version record for TTS audio history.\n\n`audioUrl` here is the versioned serving URL, e.g.\n`/api/classroom-media/{classroomId}/audio/{actionId}/v003.mp3`.",
+            "properties": {
+                "audioUrl": {
+                    "type": "string"
+                },
+                "generatedAt": {
+                    "type": "string"
+                },
+                "textHash": {
+                    "type": "string"
+                },
+                "versionNo": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "audioUrl",
+                "generatedAt",
+                "textHash",
+                "versionNo"
+            ],
+            "type": "object"
+        },
+        "TableCell": {
+            "description": "表格单元格\n\nid: 单元格ID\n\ncolspan: 合并列数\n\nrowspan: 合并行数\n\ntext: 文字内容\n\nstyle?: 单元格样式",
+            "properties": {
+                "colspan": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "rowspan": {
+                    "type": "number"
+                },
+                "style": {
+                    "$ref": "#/definitions/TableCellStyle"
+                },
+                "text": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "colspan",
+                "id",
+                "rowspan",
+                "text"
+            ],
+            "type": "object"
+        },
+        "TableCellStyle": {
+            "$ref": "#/definitions/TableCellStyle_1",
+            "description": "表格单元格样式\n\nbold?: 加粗\n\nem?: 斜体\n\nunderline?: 下划线\n\nstrikethrough?: 删除线\n\ncolor?: 字体颜色\n\nbackcolor?: 填充色\n\nfontsize?: 字体大小\n\nfontname?: 字体\n\nalign?: 对齐方式"
+        },
+        "TableCellStyle_1": {
+            "description": "表格单元格样式\n\nbold?: 加粗\n\nem?: 斜体\n\nunderline?: 下划线\n\nstrikethrough?: 删除线\n\ncolor?: 字体颜色\n\nbackcolor?: 填充色\n\nfontsize?: 字体大小\n\nfontname?: 字体\n\nalign?: 对齐方式",
+            "properties": {
+                "align": {
+                    "$ref": "#/definitions/TextAlign"
+                },
+                "backcolor": {
+                    "type": "string"
+                },
+                "bold": {
+                    "type": "boolean"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "em": {
+                    "type": "boolean"
+                },
+                "fontname": {
+                    "type": "string"
+                },
+                "fontsize": {
+                    "type": "string"
+                },
+                "strikethrough": {
+                    "type": "boolean"
+                },
+                "underline": {
+                    "type": "boolean"
+                }
+            },
+            "type": "object"
+        },
+        "TableTheme": {
+            "$ref": "#/definitions/TableTheme_1",
+            "description": "表格主题\n\ncolor: 主题色\n\nrowHeader: 标题行\n\nrowFooter: 汇总行\n\ncolHeader: 第一列\n\ncolFooter: 最后一列"
+        },
+        "TableTheme_1": {
+            "description": "表格主题\n\ncolor: 主题色\n\nrowHeader: 标题行\n\nrowFooter: 汇总行\n\ncolHeader: 第一列\n\ncolFooter: 最后一列",
+            "properties": {
+                "colFooter": {
+                    "type": "boolean"
+                },
+                "colHeader": {
+                    "type": "boolean"
+                },
+                "color": {
+                    "type": "string"
+                },
+                "rowFooter": {
+                    "type": "boolean"
+                },
+                "rowHeader": {
+                    "type": "boolean"
+                }
+            },
+            "required": [
+                "colFooter",
+                "colHeader",
+                "color",
+                "rowFooter",
+                "rowHeader"
+            ],
+            "type": "object"
+        },
+        "TextAlign": {
+            "enum": [
+                "center",
+                "justify",
+                "left",
+                "right"
+            ],
+            "type": "string"
+        },
+        "TextType": {
+            "enum": [
+                "content",
+                "footer",
+                "header",
+                "item",
+                "itemNumber",
+                "itemTitle",
+                "notes",
+                "partNumber",
+                "subtitle",
+                "title"
+            ],
+            "type": "string"
+        },
+        "TurningMode": {
+            "enum": [
+                "fade",
+                "no",
+                "random",
+                "rotate",
+                "scale",
+                "scaleReverse",
+                "scaleX",
+                "scaleY",
+                "slideX",
+                "slideX3D",
+                "slideY",
+                "slideY3D"
+            ],
+            "type": "string"
+        },
+        "WbClearAction": {
+            "description": "Clear all whiteboard elements",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "wb_clear",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "type"
+            ],
+            "type": "object"
+        },
+        "WbCloseAction": {
+            "description": "Close whiteboard (wait for animation)",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "wb_close",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "type"
+            ],
+            "type": "object"
+        },
+        "WbDeleteAction": {
+            "description": "Delete a specific whiteboard element by ID",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "elementId": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "wb_delete",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "elementId",
+                "id",
+                "type"
+            ],
+            "type": "object"
+        },
+        "WbDrawChartAction": {
+            "description": "Draw chart on whiteboard (wait for render)",
+            "properties": {
+                "chartType": {
+                    "enum": [
+                        "area",
+                        "bar",
+                        "column",
+                        "line",
+                        "pie",
+                        "radar",
+                        "ring",
+                        "scatter"
+                    ],
+                    "type": "string"
+                },
+                "data": {
+                    "properties": {
+                        "labels": {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        "legends": {
+                            "items": {
+                                "type": "string"
+                            },
+                            "type": "array"
+                        },
+                        "series": {
+                            "items": {
+                                "items": {
+                                    "type": "number"
+                                },
+                                "type": "array"
+                            },
+                            "type": "array"
+                        }
+                    },
+                    "required": [
+                        "labels",
+                        "legends",
+                        "series"
+                    ],
+                    "type": "object"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "elementId": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "themeColors": {
+                    "items": {
+                        "type": "string"
+                    },
+                    "type": "array"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "wb_draw_chart",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                },
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "chartType",
+                "data",
+                "height",
+                "id",
+                "type",
+                "width",
+                "x",
+                "y"
+            ],
+            "type": "object"
+        },
+        "WbDrawLatexAction": {
+            "description": "Draw LaTeX formula on whiteboard (wait for render)",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "elementId": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "latex": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "wb_draw_latex",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                },
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "id",
+                "latex",
+                "type",
+                "x",
+                "y"
+            ],
+            "type": "object"
+        },
+        "WbDrawLineAction": {
+            "description": "Draw line/arrow on whiteboard (wait for render)",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "elementId": {
+                    "type": "string"
+                },
+                "endX": {
+                    "type": "number"
+                },
+                "endY": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "points": {
+                    "anyOf": [
+                        {
+                            "items": [
+                                {
+                                    "const": "",
+                                    "type": "string"
+                                },
+                                {
+                                    "const": "arrow",
+                                    "type": "string"
+                                }
+                            ],
+                            "maxItems": 2,
+                            "minItems": 2,
+                            "type": "array"
+                        },
+                        {
+                            "items": [
+                                {
+                                    "const": "arrow",
+                                    "type": "string"
+                                },
+                                {
+                                    "const": "",
+                                    "type": "string"
+                                }
+                            ],
+                            "maxItems": 2,
+                            "minItems": 2,
+                            "type": "array"
+                        },
+                        {
+                            "items": [
+                                {
+                                    "const": "arrow",
+                                    "type": "string"
+                                },
+                                {
+                                    "const": "arrow",
+                                    "type": "string"
+                                }
+                            ],
+                            "maxItems": 2,
+                            "minItems": 2,
+                            "type": "array"
+                        },
+                        {
+                            "items": [
+                                {
+                                    "const": "",
+                                    "type": "string"
+                                },
+                                {
+                                    "const": "",
+                                    "type": "string"
+                                }
+                            ],
+                            "maxItems": 2,
+                            "minItems": 2,
+                            "type": "array"
+                        }
+                    ]
+                },
+                "startX": {
+                    "type": "number"
+                },
+                "startY": {
+                    "type": "number"
+                },
+                "style": {
+                    "enum": [
+                        "dashed",
+                        "solid"
+                    ],
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "wb_draw_line",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "endX",
+                "endY",
+                "id",
+                "startX",
+                "startY",
+                "type"
+            ],
+            "type": "object"
+        },
+        "WbDrawShapeAction": {
+            "description": "Draw shape on whiteboard (wait for render)",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "elementId": {
+                    "type": "string"
+                },
+                "fillColor": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "shape": {
+                    "enum": [
+                        "circle",
+                        "rectangle",
+                        "triangle"
+                    ],
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "wb_draw_shape",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                },
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "height",
+                "id",
+                "shape",
+                "type",
+                "width",
+                "x",
+                "y"
+            ],
+            "type": "object"
+        },
+        "WbDrawTableAction": {
+            "description": "Draw table on whiteboard (wait for render)",
+            "properties": {
+                "data": {
+                    "items": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array"
+                    },
+                    "type": "array"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "elementId": {
+                    "type": "string"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "outline": {
+                    "properties": {
+                        "color": {
+                            "type": "string"
+                        },
+                        "style": {
+                            "type": "string"
+                        },
+                        "width": {
+                            "type": "number"
+                        }
+                    },
+                    "required": [
+                        "color",
+                        "style",
+                        "width"
+                    ],
+                    "type": "object"
+                },
+                "theme": {
+                    "properties": {
+                        "color": {
+                            "type": "string"
+                        }
+                    },
+                    "required": [
+                        "color"
+                    ],
+                    "type": "object"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "wb_draw_table",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                },
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "data",
+                "height",
+                "id",
+                "type",
+                "width",
+                "x",
+                "y"
+            ],
+            "type": "object"
+        },
+        "WbDrawTextAction": {
+            "description": "Draw text on whiteboard (wait for render)",
+            "properties": {
+                "color": {
+                    "type": "string"
+                },
+                "content": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "elementId": {
+                    "type": "string"
+                },
+                "fontSize": {
+                    "type": "number"
+                },
+                "height": {
+                    "type": "number"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "wb_draw_text",
+                    "type": "string"
+                },
+                "width": {
+                    "type": "number"
+                },
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "content",
+                "id",
+                "type",
+                "x",
+                "y"
+            ],
+            "type": "object"
+        },
+        "WbOpenAction": {
+            "description": "Open whiteboard (wait for animation)",
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "type": {
+                    "const": "wb_open",
+                    "type": "string"
+                }
+            },
+            "required": [
+                "id",
+                "type"
+            ],
+            "type": "object"
+        },
+        "Whiteboard": {
+            "properties": {
+                "animations": {
+                    "items": {
+                        "$ref": "#/definitions/PPTAnimation"
+                    },
+                    "type": "array"
+                },
+                "background": {
+                    "$ref": "#/definitions/SlideBackground"
+                },
+                "elements": {
+                    "items": {
+                        "$ref": "#/definitions/PPTElement"
+                    },
+                    "type": "array"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "viewportRatio": {
+                    "type": "number"
+                },
+                "viewportSize": {
+                    "type": "number"
+                }
+            },
+            "required": [
+                "elements",
+                "id",
+                "viewportRatio",
+                "viewportSize"
+            ],
+            "type": "object"
+        },
+        "__type": {
+            "type": "object"
+        },
+        "__type_1": {
+            "type": "object"
+        },
+        "{schemaVersion:1;assets:Record<string,{kind:\"image\"|\"video\";elementId:string;sceneId:string;prompt:string;provider:string;model:string;params:Record<string,unknown>;currentVersion:number;versions:{versionNo:number;path:string;promptUsed:string;paramsUsed:Record<string,unknown>;generatedAt:string;}[];}>;interactiveSlides?:Record<string,{sceneId:string;prompt:string;model:string;currentVersion:number;versions:{versionNo:number;htmlPath:string;prompt:string;generatedAt:string;}[];}>|undefined;}": {
+            "properties": {
+                "assets": {
+                    "$ref": "#/definitions/Record%3Cstring%2C%7Bkind%3A%22image%22%7C%22video%22%3BelementId%3Astring%3BsceneId%3Astring%3Bprompt%3Astring%3Bprovider%3Astring%3Bmodel%3Astring%3Bparams%3ARecord%3Cstring%2Cunknown%3E%3BcurrentVersion%3Anumber%3Bversions%3A%7BversionNo%3Anumber%3Bpath%3Astring%3BpromptUsed%3Astring%3BparamsUsed%3ARecord%3Cstring%2Cunknown%3E%3BgeneratedAt%3Astring%3B%7D%5B%5D%3B%7D%3E",
+                    "description": "Keyed by elementId."
+                },
+                "interactiveSlides": {
+                    "$ref": "#/definitions/Record_1",
+                    "description": "Keyed by sceneId. Optional — only present for classrooms with interactive scenes."
+                },
+                "schemaVersion": {
+                    "const": 1,
+                    "type": "number"
+                }
+            },
+            "required": [
+                "assets",
+                "schemaVersion"
+            ],
+            "type": "object"
+        }
+    }
+}
+

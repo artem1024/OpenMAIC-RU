@@ -14,7 +14,8 @@
     "lint": "eslint",
     "check": "prettier . --check",
     "format": "prettier . --write",
-    "test": "vitest run"
+    "test": "vitest run",
+    "schema:classroom": "typescript-json-schema tsconfig.json PersistedClassroomData --required --strictNullChecks --skipLibCheck --esModuleInterop --ignoreErrors --include 'lib/**/*.ts' --topRef --aliasRefs --out lib/generated/classroom.schema.json"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.23",
@@ -115,6 +116,7 @@
     "tailwindcss": "^4",
     "tslib": "^2.8.0",
     "typescript": "^5",
+    "typescript-json-schema": "0.67.1",
     "vitest": "^4.1.0",
     "vue-to-react": "^1.0.0"
   },
