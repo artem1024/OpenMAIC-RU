@@ -124,12 +124,17 @@ function patchHtmlForIframe(html: string): string {
   //   - base-uri 'none'    → <base href> redirection
   // 'unsafe-inline' is required because our interactive slides ship inline
   // <script> and inline event handlers; the sandbox null-origin makes this safe.
-  // script-src/connect-src whitelist https://cdn.tailwindcss.com because the
-  // interactive-html generation prompt instructs the model to load Tailwind
-  // via that CDN. Without it slide layout collapses (Tailwind utility classes
-  // do nothing). The null-origin sandbox still prevents access to parent
-  // cookies/storage even with the CDN allowed.
-  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline' 'self' https://cdn.tailwindcss.com; style-src 'unsafe-inline' 'self' https: data:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src https://cdn.tailwindcss.com; frame-src 'none'; object-src 'none'; base-uri 'none';">`;
+  // script-src/connect-src whitelist the two CDNs our interactive scenes
+  // legitimately load:
+  //   - https://cdn.tailwindcss.com — the interactive-html generation prompt
+  //     instructs the model to ship Tailwind via this CDN; without it the
+  //     entire slide layout collapses (no utility classes).
+  //   - https://cdn.jsdelivr.net — interactive-post-processor.ts injects
+  //     KaTeX (katex.min.js + auto-render.min.js) from jsdelivr to render
+  //     LaTeX formulas inside interactive slides.
+  // The null-origin sandbox still prevents access to parent cookies/storage
+  // even with these CDNs allowed.
+  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline' 'self' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'unsafe-inline' 'self' https: data:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src https://cdn.tailwindcss.com https://cdn.jsdelivr.net; frame-src 'none'; object-src 'none'; base-uri 'none';">`;
 
   const iframeCss = `<style data-iframe-patch>
   html, body {
