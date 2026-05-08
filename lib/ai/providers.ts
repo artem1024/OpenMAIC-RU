@@ -6,7 +6,7 @@
  * - Anthropic Claude (native)
  * - Google Gemini (native)
  * - MiniMax (Anthropic-compatible, recommended by official)
- * - OpenAI-compatible providers (DeepSeek, Kimi, GLM, SiliconFlow, Doubao, etc.)
+ * - OpenAI-compatible providers (DeepSeek, Kimi, GLM, SiliconFlow, Doubao, Lemonade, etc.)
  *
  * Sources:
  * - https://platform.openai.com/docs/models
@@ -978,6 +978,37 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
       },
     ],
   },
+
+  lemonade: {
+    id: 'lemonade',
+    name: 'Lemonade',
+    type: 'openai',
+    defaultBaseUrl: 'http://localhost:13305/v1',
+    requiresApiKey: false,
+    icon: '/logos/lemonade.svg',
+    models: [
+      {
+        id: 'Qwen3.5-4B-GGUF',
+        name: 'Qwen3.5 4B GGUF',
+        capabilities: { streaming: true, tools: true, vision: true },
+      },
+      {
+        id: 'Qwen3-4B-GGUF',
+        name: 'Qwen3 4B GGUF',
+        capabilities: { streaming: true, tools: true, vision: false },
+      },
+      {
+        id: 'gpt-oss-20b',
+        name: 'GPT-OSS 20B',
+        capabilities: { streaming: true, tools: true, vision: false },
+      },
+      {
+        id: 'Gemma-4-26B-A4B-it-GGUF',
+        name: 'Gemma 4 26B A4B IT GGUF',
+        capabilities: { streaming: true, tools: true, vision: false },
+      },
+    ],
+  },
 };
 
 /**
@@ -1135,12 +1166,19 @@ export function getModel(config: ModelConfig): ModelWithInfo {
           const thinkingCtx = (globalThis as Record<string, unknown>).__thinkingContext as
             | { getStore?: () => unknown }
             | undefined;
-          const thinking = thinkingCtx?.getStore?.() as ThinkingConfig | undefined;
+          const thinkingFromContext = thinkingCtx?.getStore?.() as ThinkingConfig | undefined;
+          // Lemonade has no default thinking config in our fork — Phase 1 #16
+          // overlay (model-metadata) is not yet merged. Use only client-supplied
+          // config from the AsyncLocalStorage context.
+          const thinking = thinkingFromContext;
           if (thinking && init?.body && typeof init.body === 'string') {
             const extra = getCompatThinkingBodyParams(providerId, thinking);
             if (extra) {
               try {
                 const body = JSON.parse(init.body);
+                if (providerId === 'lemonade' && 'stream_options' in body) {
+                  delete body.stream_options;
+                }
                 Object.assign(body, extra);
                 init = { ...init, body: JSON.stringify(body) };
               } catch {
@@ -1148,7 +1186,44 @@ export function getModel(config: ModelConfig): ModelWithInfo {
               }
             }
           }
-          return globalThis.fetch(url, init);
+          const response = await globalThis.fetch(url, init);
+
+          if (providerId !== 'lemonade') {
+            return response;
+          }
+
+          const contentType = response.headers.get('content-type') || '';
+          let isStreamingRequest = false;
+          if (init?.body && typeof init.body === 'string') {
+            try {
+              const requestBody = JSON.parse(init.body);
+              isStreamingRequest = requestBody?.stream === true;
+            } catch {
+              /* ignore request-body inspection failure */
+            }
+          }
+
+          if (isStreamingRequest) {
+            return response;
+          }
+
+          try {
+            const cloned = response.clone();
+            const text = await cloned.text();
+
+            try {
+              JSON.parse(text);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              log.warn(
+                `[Lemonade] Invalid JSON response from OpenAI-compatible path: status=${response.status}, contentType=${contentType || 'n/a'}, bodyLen=${text.length}, first=${JSON.stringify(text.slice(0, 500))}, last=${JSON.stringify(text.slice(Math.max(0, text.length - 500)))}, parseError=${message}`,
+              );
+            }
+          } catch (error) {
+            log.warn('[Lemonade] Failed to inspect JSON response body:', error);
+          }
+
+          return response;
         };
       }
 

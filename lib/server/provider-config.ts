@@ -49,6 +49,7 @@ const LLM_ENV_MAP: Record<string, string> = {
   SILICONFLOW: 'siliconflow',
   DOUBAO: 'doubao',
   GROK: 'grok',
+  LEMONADE: 'lemonade',
 };
 
 const TTS_ENV_MAP: Record<string, string> = {
@@ -59,11 +60,13 @@ const TTS_ENV_MAP: Record<string, string> = {
   TTS_ELEVENLABS: 'elevenlabs-tts',
   TTS_GEMINI: 'gemini-tts',
   TTS_MINIMAX: 'minimax-tts',
+  TTS_LEMONADE: 'lemonade-tts',
 };
 
 const ASR_ENV_MAP: Record<string, string> = {
   ASR_OPENAI: 'openai-whisper',
   ASR_QWEN: 'qwen-asr',
+  ASR_LEMONADE: 'lemonade-asr',
 };
 
 const PDF_ENV_MAP: Record<string, string> = {
@@ -77,6 +80,7 @@ const IMAGE_ENV_MAP: Record<string, string> = {
   IMAGE_NANO_BANANA: 'nano-banana',
   IMAGE_MINIMAX: 'minimax-image',
   IMAGE_GROK: 'grok-image',
+  IMAGE_LEMONADE: 'lemonade',
 };
 
 const VIDEO_ENV_MAP: Record<string, string> = {
@@ -124,21 +128,38 @@ function loadYamlFile(filename: string): YamlData {
 // Env-var helpers
 // ---------------------------------------------------------------------------
 
+interface LoadEnvSectionOptions {
+  /**
+   * Provider IDs that may be enabled without an API key (e.g. local Lemonade/Ollama).
+   * For these providers, presence of base URL alone is enough to register them.
+   */
+  keylessProviders?: Set<string>;
+  /**
+   * Require base URL to register the provider (used for PDF parsers).
+   */
+  requiresBaseUrl?: boolean;
+}
+
 function loadEnvSection(
   envMap: Record<string, string>,
   yamlSection: Record<string, Partial<ServerProviderEntry>> | undefined,
+  options: LoadEnvSectionOptions = {},
 ): Record<string, ServerProviderEntry> {
+  const { keylessProviders, requiresBaseUrl } = options;
   const result: Record<string, ServerProviderEntry> = {};
 
   // First, add everything from YAML as defaults
   if (yamlSection) {
     for (const [id, entry] of Object.entries(yamlSection)) {
-      if (entry?.apiKey) {
+      const hasKey = !!entry?.apiKey;
+      const isKeyless = keylessProviders?.has(id);
+      const hasBaseUrl = !!entry?.baseUrl;
+      if (hasKey || (isKeyless && (hasBaseUrl || !requiresBaseUrl))) {
         result[id] = {
-          apiKey: entry.apiKey,
-          baseUrl: entry.baseUrl,
-          models: entry.models,
-          proxy: entry.proxy,
+          apiKey: entry?.apiKey ?? '',
+          baseUrl: entry?.baseUrl,
+          models: entry?.models,
+          proxy: entry?.proxy,
         };
       }
     }
@@ -164,15 +185,35 @@ function loadEnvSection(
       continue;
     }
 
-    if (!envApiKey) continue;
+    const isKeyless = keylessProviders?.has(providerId);
+    if (!envApiKey) {
+      // Allow keyless providers when base URL is present (or always, if requiresBaseUrl=false)
+      if (!isKeyless) continue;
+      if (requiresBaseUrl && !envBaseUrl) continue;
+      if (!envBaseUrl && !requiresBaseUrl) continue;
+    }
+
+    if (requiresBaseUrl && !envBaseUrl) continue;
     result[providerId] = {
-      apiKey: envApiKey,
+      apiKey: envApiKey ?? '',
       baseUrl: envBaseUrl,
       models: envModels,
     };
   }
 
   return result;
+}
+
+/**
+ * Stub fallback used by upstream image-providers logic.
+ * In our fork we do not run server-side image proxying; preserve identity to
+ * avoid breaking the Lemonade cherry-pick.
+ */
+function applyOpenAIImageFallback<T>(
+  current: T,
+  _yamlSection: Record<string, Partial<ServerProviderEntry>> | undefined,
+): T {
+  return current;
 }
 
 // ---------------------------------------------------------------------------
@@ -184,14 +225,67 @@ const DEFAULT_FILENAME = 'server-providers.yml';
 /** Cache keyed by YAML filename (empty string = default file). */
 const _configs: Map<string, ServerConfig> = new Map();
 
+/**
+ * Drop a provider entry from a section unless the corresponding `*_ENABLED` env
+ * flag is truthy. Used to keep Lemonade / MiniMax / Hailuo behind explicit
+ * opt-in (default off) so managed mode does not auto-register them.
+ */
+function gateByFeatureFlag<T extends Record<string, ServerProviderEntry>>(
+  section: T,
+  providerIds: string[],
+  envFlag: string,
+): T {
+  const raw = process.env[envFlag];
+  const enabled = raw === '1' || raw?.toLowerCase() === 'true';
+  if (enabled) return section;
+  const result = { ...section } as Record<string, ServerProviderEntry>;
+  for (const id of providerIds) {
+    if (id in result) {
+      log.info(`Provider "${id}" suppressed because ${envFlag} is not set.`);
+      delete result[id];
+    }
+  }
+  return result as T;
+}
+
 function buildConfig(yamlData: YamlData): ServerConfig {
+  let image = applyOpenAIImageFallback(
+    loadEnvSection(IMAGE_ENV_MAP, yamlData.image, {
+      keylessProviders: new Set(['lemonade']),
+    }),
+    yamlData.image,
+  );
+  image = gateByFeatureFlag(image, ['lemonade'], 'LEMONADE_ENABLED');
+  image = gateByFeatureFlag(image, ['minimax-image'], 'MINIMAX_ENABLED');
+
+  let providers = loadEnvSection(LLM_ENV_MAP, yamlData.providers, {
+    keylessProviders: new Set(['lemonade']),
+  });
+  providers = gateByFeatureFlag(providers, ['lemonade'], 'LEMONADE_ENABLED');
+  // Note: MiniMax LLM provider is preserved (already in fork base since #182);
+  // gating only TTS/Image/Video which are new in this cherry-pick wave.
+
+  let tts = loadEnvSection(TTS_ENV_MAP, yamlData.tts, {
+    keylessProviders: new Set(['lemonade-tts']),
+  });
+  tts = gateByFeatureFlag(tts, ['lemonade-tts'], 'LEMONADE_ENABLED');
+  tts = gateByFeatureFlag(tts, ['minimax-tts'], 'MINIMAX_ENABLED');
+
+  let asr = loadEnvSection(ASR_ENV_MAP, yamlData.asr, {
+    keylessProviders: new Set(['lemonade-asr']),
+  });
+  asr = gateByFeatureFlag(asr, ['lemonade-asr'], 'LEMONADE_ENABLED');
+
+  let video = loadEnvSection(VIDEO_ENV_MAP, yamlData.video);
+  video = gateByFeatureFlag(video, ['minimax-video'], 'MINIMAX_ENABLED');
+
   return {
-    providers: loadEnvSection(LLM_ENV_MAP, yamlData.providers),
-    tts: loadEnvSection(TTS_ENV_MAP, yamlData.tts),
-    asr: loadEnvSection(ASR_ENV_MAP, yamlData.asr),
-    pdf: loadEnvSection(PDF_ENV_MAP, yamlData.pdf),
-    image: loadEnvSection(IMAGE_ENV_MAP, yamlData.image),
-    video: loadEnvSection(VIDEO_ENV_MAP, yamlData.video),
+    providers,
+    tts,
+    asr,
+    pdf: loadEnvSection(PDF_ENV_MAP, yamlData.pdf, { requiresBaseUrl: true }),
+    image,
+    video,
     webSearch: loadEnvSection(WEB_SEARCH_ENV_MAP, yamlData['web-search']),
   };
 }

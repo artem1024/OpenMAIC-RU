@@ -71,7 +71,9 @@ export function ModelSelector({
   const configuredProviders = Object.entries(providersConfig)
     .filter(
       ([, config]) =>
-        (!config.requiresApiKey || config.apiKey || config.isServerConfigured) &&
+        (config.requiresApiKey
+          ? config.apiKey || config.isServerConfigured
+          : config.isServerConfigured || config.baseUrl || config.defaultBaseUrl) &&
         config.models.length >= 1 &&
         (config.baseUrl || config.defaultBaseUrl || config.serverBaseUrl),
     )

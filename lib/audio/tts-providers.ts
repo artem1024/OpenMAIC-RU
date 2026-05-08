@@ -150,6 +150,9 @@ export async function generateTTS(
     case 'gemini-tts':
       return await generateGeminiTTS(config, text);
 
+    case 'lemonade-tts':
+      return await generateLemonadeTTS(config, text);
+
     case 'browser-native-tts':
       throw new Error(
         'Browser Native TTS must be handled client-side using Web Speech API. This provider cannot be used on the server.',
@@ -194,6 +197,83 @@ async function generateOpenAITTS(
     audio: new Uint8Array(arrayBuffer),
     format: 'mp3',
   };
+}
+
+/**
+ * Lemonade TTS implementation (OpenAI-compatible /v1/audio/speech).
+ */
+async function generateLemonadeTTS(
+  config: TTSModelConfig,
+  text: string,
+): Promise<TTSGenerationResult> {
+  const baseUrl = (config.baseUrl || TTS_PROVIDERS['lemonade-tts'].defaultBaseUrl || '').replace(
+    /\/$/,
+    '',
+  );
+  const modelId = config.modelId || TTS_PROVIDERS['lemonade-tts'].defaultModelId;
+  const voice = config.voice || 'af_heart';
+
+  const response = await fetch(`${baseUrl}/audio/speech`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      ...getBackendAuthHeaders(config.apiKey),
+    },
+    body: JSON.stringify({
+      model: modelId,
+      input: text,
+      voice,
+      speed: config.speed || 1.0,
+      response_format: config.format || 'wav',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Lemonade TTS API error: ${await readTTSApiError(response)}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const contentType = (response.headers.get('content-type') || '').toLowerCase();
+  let format = 'wav';
+  if (contentType.includes('mp3') || contentType.includes('mpeg')) format = 'mp3';
+  else if (contentType.includes('flac')) format = 'flac';
+  else if (contentType.includes('opus')) format = 'opus';
+  else if (contentType.includes('pcm')) format = 'pcm';
+  return {
+    audio: new Uint8Array(arrayBuffer),
+    format,
+  };
+}
+
+function getBackendAuthHeaders(apiKey?: string): Record<string, string> {
+  return apiKey?.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : {};
+}
+
+
+
+function base64ToBlob(base64: string, mimeType?: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType || 'audio/wav' });
+}
+
+
+
+async function readTTSApiError(response: Response): Promise<string> {
+  const text = await response.text().catch(() => response.statusText);
+  if (!text) return response.statusText;
+  try {
+    const json = JSON.parse(text) as { detail?: unknown; error?: { message?: string } | string };
+    if (typeof json.detail === 'string') return json.detail;
+    if (typeof json.error === 'string') return json.error;
+    if (json.error?.message) return json.error.message;
+  } catch {
+    // Fall through to raw text.
+  }
+  return text;
 }
 
 /**

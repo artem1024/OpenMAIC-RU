@@ -86,6 +86,7 @@ export type TTSProviderId =
   | 'elevenlabs-tts'
   | 'gemini-tts'
   | 'minimax-tts'
+  | 'lemonade-tts'
   | 'browser-native-tts';
 // Add new TTS providers below (uncomment and modify):
 // | 'fish-audio-tts'
@@ -124,6 +125,8 @@ export interface TTSProviderConfig {
   supportsModelSelection?: boolean;
   /** Available models for selection (when supportsModelSelection=true) */
   models?: Array<{ id: string; name: string }>;
+  /** Default model id used by this provider when none supplied. */
+  defaultModelId?: string;
 }
 
 /**
@@ -134,6 +137,8 @@ export interface TTSModelConfig {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  /** Per-call model id (alias for `model` used by Lemonade/MiniMax). */
+  modelId?: string;
   voice: string;
   speed?: number;
   format?: string;
@@ -151,7 +156,13 @@ export interface TTSModelConfig {
  * Add new ASR providers here as union members.
  * Keep in sync with ASR_PROVIDERS registry in constants.ts
  */
-export type ASRProviderId = 'openai-whisper' | 'browser-native' | 'qwen-asr';
+export type BuiltInASRProviderId =
+  | 'openai-whisper'
+  | 'browser-native'
+  | 'qwen-asr'
+  | 'lemonade-asr';
+
+export type ASRProviderId = BuiltInASRProviderId | `custom-asr-${string}`;
 // Add new ASR providers below (uncomment and modify):
 // | 'elevenlabs-asr'
 // | 'assemblyai-asr'
@@ -169,6 +180,10 @@ export interface ASRProviderConfig {
   icon?: string;
   supportedLanguages: string[];
   supportedFormats: string[];
+  /** Available models for selection. */
+  models?: Array<{ id: string; name: string }>;
+  /** Default model id used when none is supplied. */
+  defaultModelId?: string;
 }
 
 /**
@@ -179,4 +194,6 @@ export interface ASRModelConfig {
   apiKey?: string;
   baseUrl?: string;
   language?: string;
+  /** Per-call model id (used by Lemonade Whisper variants). */
+  modelId?: string;
 }
