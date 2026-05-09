@@ -47,6 +47,7 @@ export async function saveStageData(stageId: string, data: StageStoreData): Prom
       language: data.stage.language,
       style: data.stage.style,
       currentSceneId: data.currentSceneId || undefined,
+      videoManifest: data.stage.videoManifest,
     });
 
     // Delete old scenes first to avoid orphaned data

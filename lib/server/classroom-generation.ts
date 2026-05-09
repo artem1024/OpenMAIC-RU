@@ -31,6 +31,7 @@ import {
   generateTTSForClassroom,
   type RemovedMedia,
 } from '@/lib/server/classroom-media-generation';
+import { buildVideoManifestFromOutlines } from '@/lib/media/video-manifest';
 import type { SceneOutline, UserRequirements } from '@/lib/types/generation';
 import type { Scene, Stage } from '@/lib/types/stage';
 
@@ -605,6 +606,7 @@ export async function generateClassroom(
     name: outlines[0]?.title || requirement.slice(0, 50),
     description: undefined,
     language: lang,
+    videoManifest: buildVideoManifestFromOutlines(outlines),
     style: 'interactive',
     createdAt: Date.now(),
     updatedAt: Date.now(),

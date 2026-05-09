@@ -166,16 +166,16 @@ If the scene outline includes `mediaGenerations`, you may also use generated ima
   "top": 150,
   "width": 500,
   "height": 281,
-  "src": "gen_vid_1",
+  "mediaRef": "gen_vid_1",
   "autoplay": false
 }
 ```
 
-**Required Fields**: `id`, `type`, `left`, `top`, `width`, `height`, `src` (generated video ID like "gen_vid_1"), `autoplay` (boolean)
+**Required Fields**: `id`, `type`, `left`, `top`, `width`, `height`, `mediaRef` (generated video media ref copied exactly from the assigned media list, e.g. "gen_vid_1"), `autoplay` (boolean)
 
 **Video Sizing Rules**:
 
-- `src` MUST be a generated video ID from the `mediaGenerations` list (e.g., "gen_vid_1")
+- `mediaRef` MUST be copied exactly from a generated video entry in the `mediaGenerations` list (e.g., "gen_vid_1")
 - Default aspect ratio: 16:9 → `height = width / 1.778`
 - Typical video width: 400-600px (prominent on slide)
 - Position video as a focal element — usually centered or in the main content area
@@ -1011,7 +1011,7 @@ Before outputting JSON, verify:
 3. ✓ Aligned elements have matching center points (< 2px difference)
 4. ✓ All elements are within canvas margins (50px from each edge)
 5. ✓ Image `src` ONLY uses image IDs from the assigned images list (e.g., "img_1", "img_2") or generated IDs (e.g., "gen_img_1")
-   - Video `src` ONLY uses generated video IDs (e.g., "gen_vid_1")
+   - Video `mediaRef` ONLY uses generated video media refs from the assigned media list (e.g., "gen_vid_1")
    - Do NOT invent image/video IDs or URLs not listed in the available media
    - If no suitable image exists, do NOT create image elements — use text and shapes only
    - Any image/video ID not in the list will be automatically removed by the system
