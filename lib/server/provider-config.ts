@@ -17,7 +17,8 @@ const log = createLogger('ServerProviderConfig');
 // ---------------------------------------------------------------------------
 
 interface ServerProviderEntry {
-  apiKey: string;
+  // Optional: keyless providers like Ollama may activate via baseUrl alone.
+  apiKey?: string;
   baseUrl?: string;
   models?: string[];
   proxy?: string;
