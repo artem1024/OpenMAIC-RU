@@ -116,72 +116,21 @@ Layout note: render the depth block as its own text element (typically below the
 
 ---
 
-### ImageElement
+{{#if imageElementEnabled}}
+{{snippet:slide-image-instructions}}
 
-```json
-{
-  "id": "image_001",
-  "type": "image",
-  "left": 100,
-  "top": 150,
-  "width": 400,
-  "height": 300,
-  "src": "img_1",
-  "fixedRatio": true
-}
-```
-
-**Required Fields**: `id`, `type`, `left`, `top`, `width`, `height`, `src` (image ID like "img_1"), `fixedRatio` (always true)
-
-**Image Sizing Rules (注意保持原图比例)**:
-
-- `src` MUST be an image ID from the assigned images list (e.g., "img_1"). Do NOT use URLs or invented IDs
-- If no suitable image exists, do NOT create image elements — use text and shapes only
-- **When dimensions are provided** (e.g., "**img_1**: 尺寸: 884×424 (宽高比2.08)"):
-  - Choose a width based on layout needs (typically 300-500px)
-  - Calculate: `height = width / 宽高比`
-  - Example: 宽高比 2.08, width 400 → height = 400 / 2.08 ≈ 192
-- **When dimensions are NOT provided**: Use 4:3 default (width:height ≈ 1.33)
-- Ensure the image stays within canvas margins (50px from each edge)
-
-#### AI-Generated Images (gen*img*\*)
-
-If the scene outline includes `mediaGenerations`, you may also use generated image placeholders:
-
-- `src` can be a generated image ID like `"gen_img_1"`, `"gen_img_2"` etc.
-- These will be replaced with actual generated images after slide creation
-- Use the same dimension rules as regular images
-- Default aspect ratio for generated images: 16:9 (width:height = 16:9)
-- For generated images, calculate: `height = width / 1.778` (16:9 ratio) unless a different ratio is specified
+{{#if generatedImageEnabled}}
+{{snippet:slide-generated-image-instructions}}
+{{/if}}
 
 ---
+{{/if}}
 
-### VideoElement
-
-```json
-{
-  "id": "video_001",
-  "type": "video",
-  "left": 100,
-  "top": 150,
-  "width": 500,
-  "height": 281,
-  "src": "gen_vid_1",
-  "autoplay": false
-}
-```
-
-**Required Fields**: `id`, `type`, `left`, `top`, `width`, `height`, `src` (generated video ID like "gen_vid_1"), `autoplay` (boolean)
-
-**Video Sizing Rules**:
-
-- `src` MUST be a generated video ID from the `mediaGenerations` list (e.g., "gen_vid_1")
-- Default aspect ratio: 16:9 → `height = width / 1.778`
-- Typical video width: 400-600px (prominent on slide)
-- Position video as a focal element — usually centered or in the main content area
-- Leave space for a title and optional caption text
+{{#if generatedVideoEnabled}}
+{{snippet:slide-video-instructions}}
 
 ---
+{{/if}}
 
 ### ShapeElement
 
@@ -1010,11 +959,20 @@ Before outputting JSON, verify:
 2. ✓ All text elements pass width calculation: `char_count ≤ (width - 20) / font_size`
 3. ✓ Aligned elements have matching center points (< 2px difference)
 4. ✓ All elements are within canvas margins (50px from each edge)
-5. ✓ Image `src` ONLY uses image IDs from the assigned images list (e.g., "img_1", "img_2") or generated IDs (e.g., "gen_img_1")
-   - Video `src` ONLY uses generated video IDs (e.g., "gen_vid_1")
-   - Do NOT invent image/video IDs or URLs not listed in the available media
-   - If no suitable image exists, do NOT create image elements — use text and shapes only
-   - Any image/video ID not in the list will be automatically removed by the system
+{{#if imageElementEnabled}}
+5. ✓ Image element source IDs respect the available media list:
+   - Image `src` ONLY uses image IDs from the assigned images list (e.g., "img_1", "img_2") — do NOT invent IDs or URLs
+   - If no suitable image exists for a slot, do NOT create image elements — use text and shapes only
+{{/if}}
+{{#if generatedImageEnabled}}
+5b. ✓ Generated image IDs (`gen_img_1`, `gen_img_2`, ...) from the scene outline `mediaGenerations` may also be used as image `src`.
+{{/if}}
+{{#if generatedVideoEnabled}}
+5c. ✓ Video `src` ONLY uses generated video IDs from `mediaGenerations` (e.g., "gen_vid_1"). Do NOT invent video IDs or URLs.
+{{/if}}
+{{#if mediaElementDisabled}}
+5. ✓ Do NOT create image or video elements — use text, shapes, and LaTeX only. No media is available for this slide.
+{{/if}}
 6. ✓ Image aspect ratio preserved: `height = width / aspect_ratio` (use ratio from image metadata)
 7. ✓ LatexElement does NOT include `path`, `viewBox`, `strokeWidth`, or `fixedRatio` (system auto-generates these)
 8. ✓ LatexElement width is appropriate for the formula category (standalone fractions: 30-80, NOT 200+; inline equations: 200-400). Check the LaTeX width guide table above.

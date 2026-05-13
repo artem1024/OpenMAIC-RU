@@ -154,19 +154,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Build media generation policy based on enabled flags
+    // Build media snippet conditions based on enabled flags. The conditional
+    // {{#if imageEnabled/videoEnabled/mediaEnabled/hasSourceImages}} blocks in
+    // requirements-to-outlines/system.md gate which media instructions reach
+    // the model — this replaces the old negative-override "mediaGenerationPolicy"
+    // string with positive conditional includes (PR #490).
     const imageGenerationEnabled = req.headers.get('x-image-generation-enabled') === 'true';
     const videoGenerationEnabled = req.headers.get('x-video-generation-enabled') === 'true';
-    let mediaGenerationPolicy = '';
-    if (!imageGenerationEnabled && !videoGenerationEnabled) {
-      mediaGenerationPolicy =
-        '**IMPORTANT: Do NOT include any mediaGenerations in the outlines. Both image and video generation are disabled.**';
-    } else if (!imageGenerationEnabled) {
-      mediaGenerationPolicy =
-        '**IMPORTANT: Do NOT include any image mediaGenerations (type: "image") in the outlines. Image generation is disabled. Video generation is allowed.**';
-    } else if (!videoGenerationEnabled) {
-      mediaGenerationPolicy =
+    const mediaGenerationEnabled = imageGenerationEnabled || videoGenerationEnabled;
+    const hasSourceImages = (pdfImages?.length ?? 0) > 0;
+    let mediaPolicyMessage = '';
+    if (imageGenerationEnabled && !videoGenerationEnabled) {
+      mediaPolicyMessage =
         '**IMPORTANT: Do NOT include any video mediaGenerations (type: "video") in the outlines. Video generation is disabled. Image generation is allowed.**';
+    } else if (!imageGenerationEnabled && videoGenerationEnabled) {
+      mediaPolicyMessage =
+        '**IMPORTANT: Do NOT include any image mediaGenerations (type: "image") in the outlines. Image generation is disabled. Video generation is allowed.**';
     }
 
     // Build teacher context from agents (if available)
@@ -182,7 +185,12 @@ export async function POST(req: NextRequest) {
           : 'None',
       availableImages: availableImagesText,
       researchContext: researchContext || (requirements.language === 'zh-CN' ? '无' : 'None'),
-      mediaGenerationPolicy,
+      // Conditional-block flags consumed by {{#if}} in the template:
+      imageEnabled: imageGenerationEnabled,
+      videoEnabled: videoGenerationEnabled,
+      mediaEnabled: mediaGenerationEnabled,
+      hasSourceImages,
+      mediaPolicyMessage,
       teacherContext,
     });
 
