@@ -4,6 +4,7 @@
  * Features:
  * - File-based prompt storage in templates/
  * - Snippet composition via {{snippet:name}} syntax
+ * - Conditional blocks via {{#if flag}}...{{/if}} syntax (PR #490)
  * - Variable interpolation via {{variable}} syntax
  */
 
@@ -16,6 +17,10 @@ export {
   loadSnippet,
   buildPrompt,
   interpolateVariables,
+  processSnippets,
+  processConditionalBlocks,
+  isFilePromptsEnabled,
+  isConditionalBlocksEnabled,
   clearPromptCache,
 } from './loader';
 
