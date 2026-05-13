@@ -36,7 +36,6 @@ export class EvalStateManager {
     const stage: Stage = initial.stage ?? {
       id: 'eval-stage',
       name: 'Eval Stage',
-      languageDirective: 'en-US',
       createdAt: now,
       updatedAt: now,
     };
