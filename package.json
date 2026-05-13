@@ -15,6 +15,8 @@
     "check": "prettier . --check",
     "format": "prettier . --write",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "schema:classroom": "typescript-json-schema tsconfig.json PersistedClassroomData --required --strictNullChecks --skipLibCheck --esModuleInterop --ignoreErrors --include 'lib/**/*.ts' --topRef --aliasRefs --out lib/generated/classroom.schema.json"
   },
   "dependencies": {
@@ -98,6 +100,7 @@
     "zustand": "^5.0.10"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@rollup/plugin-commonjs": "^28.0.1",
     "@rollup/plugin-node-resolve": "^16.0.1",
     "@tailwindcss/postcss": "^4",
