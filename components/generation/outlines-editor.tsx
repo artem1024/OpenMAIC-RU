@@ -16,6 +16,7 @@ import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import type { SceneOutline } from '@/lib/types/generation';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { interpolate } from '@/lib/i18n';
 
 interface OutlinesEditorProps {
   outlines: SceneOutline[];
@@ -87,7 +88,7 @@ export function OutlinesEditor({
         <div>
           <h2 className="text-lg font-semibold">{t('outlinesEditor.title')}</h2>
           <p className="text-sm text-muted-foreground">
-            {t('outlinesEditor.subtitle').replace('{n}', String(outlines.length))}
+            {interpolate(t('outlinesEditor.subtitle'), { n: outlines.length })}
           </p>
         </div>
         <Button variant="outline" onClick={addOutline} disabled={isLoading}>

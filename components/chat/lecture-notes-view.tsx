@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { BookOpen, MessageSquare, Flashlight, MousePointer2, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { interpolate } from '@/lib/i18n';
 import type { LectureNoteEntry } from '@/lib/types/chat';
 
 const ACTION_ICON_ONLY: Record<string, { Icon: typeof Flashlight; style: string }> = {
@@ -67,7 +68,7 @@ export function LectureNotesView({ notes, currentSceneId }: LectureNotesViewProp
       {notes.map((note, index) => {
         const isCurrent = note.sceneId === currentSceneId;
         const pageNum = index + 1;
-        const pageLabel = t('chat.lectureNotes.pageLabel').replace('{n}', String(pageNum));
+        const pageLabel = interpolate(t('chat.lectureNotes.pageLabel'), { n: pageNum });
 
         return (
           <div

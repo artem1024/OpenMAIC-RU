@@ -10,6 +10,7 @@ import { createStageAPI } from '@/lib/api/stage-api';
 import { elementFingerprint } from '@/lib/utils/element-fingerprint';
 import { toast } from 'sonner';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { interpolate } from '@/lib/i18n';
 
 interface WhiteboardHistoryProps {
   readonly isOpen: boolean;
@@ -142,10 +143,9 @@ export function WhiteboardHistory({ isOpen, onClose }: WhiteboardHistoryProps) {
                         </div>
                         <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                           {formatTime(snap.timestamp)} ·{' '}
-                          {t('whiteboard.elementCount').replace(
-                            '{count}',
-                            String(snap.elements.length),
-                          )}
+                          {interpolate(t('whiteboard.elementCount'), {
+                            count: snap.elements.length,
+                          })}
                         </div>
                       </div>
                       <button

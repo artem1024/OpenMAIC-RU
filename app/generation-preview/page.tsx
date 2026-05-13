@@ -12,6 +12,7 @@ import { useStageStore } from '@/lib/store/stage';
 import { useSettingsStore } from '@/lib/store/settings';
 import { useAgentRegistry } from '@/lib/orchestration/registry/store';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { interpolate } from '@/lib/i18n';
 import {
   loadImageMapping,
   loadPdfBlob,
@@ -287,14 +288,15 @@ function GenerationPreviewContent() {
         const warnings: string[] = [];
         if ((parseResult.data.text as string).length > MAX_PDF_CONTENT_CHARS) {
           warnings.push(
-            t('generation.textTruncated').replace('{n}', String(MAX_PDF_CONTENT_CHARS)),
+            interpolate(t('generation.textTruncated'), { n: MAX_PDF_CONTENT_CHARS }),
           );
         }
         if (images.length > MAX_VISION_IMAGES) {
           warnings.push(
-            t('generation.imageTruncated')
-              .replace('{total}', String(images.length))
-              .replace('{max}', String(MAX_VISION_IMAGES)),
+            interpolate(t('generation.imageTruncated'), {
+              total: images.length,
+              max: MAX_VISION_IMAGES,
+            }),
           );
         }
         if (warnings.length > 0) {
