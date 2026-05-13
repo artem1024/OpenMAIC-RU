@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const proxyFetchMock = vi.hoisted(() => vi.fn());
+const safeWebSearchFetchMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@/lib/server/proxy-fetch', () => ({
-  proxyFetch: proxyFetchMock,
+vi.mock('@/lib/web-search/safe-fetch', () => ({
+  safeWebSearchFetch: safeWebSearchFetchMock,
 }));
 
 vi.mock('@/lib/logger', () => ({
@@ -19,11 +19,11 @@ import { searchWithBaidu } from '@/lib/web-search/baidu';
 
 describe('searchWithBaidu', () => {
   beforeEach(() => {
-    proxyFetchMock.mockReset();
+    safeWebSearchFetchMock.mockReset();
   });
 
   it('queries only enabled Baidu sub-sources and merges their results', async () => {
-    proxyFetchMock.mockResolvedValueOnce(
+    safeWebSearchFetchMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           errno: 0,
@@ -36,7 +36,7 @@ describe('searchWithBaidu', () => {
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
     );
-    proxyFetchMock.mockResolvedValueOnce(
+    safeWebSearchFetchMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           code: '0',
@@ -65,8 +65,8 @@ describe('searchWithBaidu', () => {
       },
     });
 
-    expect(proxyFetchMock).toHaveBeenCalledTimes(2);
-    expect(proxyFetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
+    expect(safeWebSearchFetchMock).toHaveBeenCalledTimes(2);
+    expect(safeWebSearchFetchMock.mock.calls.map((call) => String(call[1]))).toEqual([
       'https://appbuilder.baidu.com/v2/baike/lemma/get_content?search_type=lemmaTitle&search_key=OpenMAIC',
       'https://qianfan.baidubce.com/v2/tools/baidu_scholar/search?wd=OpenMAIC&pageNum=0&enable_ai_abstract=true',
     ]);
@@ -80,7 +80,7 @@ describe('searchWithBaidu', () => {
   });
 
   it('defaults Baidu sub-sources to all enabled when omitted', async () => {
-    proxyFetchMock.mockImplementation((url: string) => {
+    safeWebSearchFetchMock.mockImplementation((_providerId: string, url: string) => {
       if (url.includes('/ai_search/web_search')) {
         return Promise.resolve(
           new Response(JSON.stringify({ code: 0, references: [] }), {
@@ -107,7 +107,7 @@ describe('searchWithBaidu', () => {
 
     await searchWithBaidu({ query: 'OpenMAIC', apiKey: 'baidu-key' });
 
-    expect(proxyFetchMock.mock.calls.map((call) => String(call[0]))).toEqual([
+    expect(safeWebSearchFetchMock.mock.calls.map((call) => String(call[1]))).toEqual([
       'https://qianfan.baidubce.com/v2/ai_search/web_search',
       'https://appbuilder.baidu.com/v2/baike/lemma/get_content?search_type=lemmaTitle&search_key=OpenMAIC',
       'https://qianfan.baidubce.com/v2/tools/baidu_scholar/search?wd=OpenMAIC&pageNum=0&enable_ai_abstract=true',

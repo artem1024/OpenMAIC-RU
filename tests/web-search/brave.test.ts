@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const proxyFetchMock = vi.hoisted(() => vi.fn());
+const safeWebSearchFetchMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@/lib/server/proxy-fetch', () => ({
-  proxyFetch: proxyFetchMock,
+vi.mock('@/lib/web-search/safe-fetch', () => ({
+  safeWebSearchFetch: safeWebSearchFetchMock,
 }));
 
 import { parseBraveSearchHtml, searchWithBrave } from '@/lib/web-search/brave';
@@ -49,11 +49,11 @@ describe('parseBraveSearchHtml', () => {
 
 describe('searchWithBrave', () => {
   beforeEach(() => {
-    proxyFetchMock.mockReset();
+    safeWebSearchFetchMock.mockReset();
   });
 
   it('uses Brave public search without an API key and clamps long queries', async () => {
-    proxyFetchMock.mockResolvedValueOnce(
+    safeWebSearchFetchMock.mockResolvedValueOnce(
       new Response(
         `
           <div class="snippet" data-type="web">
@@ -70,11 +70,11 @@ describe('searchWithBrave', () => {
       maxResults: 3,
     });
 
-    const requestedUrl = new URL(proxyFetchMock.mock.calls[0][0]);
+    const requestedUrl = new URL(safeWebSearchFetchMock.mock.calls[0][1]);
     expect(requestedUrl.origin).toBe('https://search.brave.com');
     expect(requestedUrl.pathname).toBe('/search');
     expect(requestedUrl.searchParams.get('q')).toHaveLength(400);
-    expect(proxyFetchMock.mock.calls[0][1]).toMatchObject({ method: 'GET' });
+    expect(safeWebSearchFetchMock.mock.calls[0][2]).toMatchObject({ method: 'GET' });
     expect(result.sources).toHaveLength(1);
     expect(result.query).toHaveLength(400);
   });

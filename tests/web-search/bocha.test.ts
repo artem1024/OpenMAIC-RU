@@ -1,20 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const proxyFetchMock = vi.hoisted(() => vi.fn());
+const safeWebSearchFetchMock = vi.hoisted(() => vi.fn());
 
-vi.mock('@/lib/server/proxy-fetch', () => ({
-  proxyFetch: proxyFetchMock,
+vi.mock('@/lib/web-search/safe-fetch', () => ({
+  safeWebSearchFetch: safeWebSearchFetchMock,
 }));
 
 import { searchWithBocha } from '@/lib/web-search/bocha';
 
 describe('searchWithBocha', () => {
   beforeEach(() => {
-    proxyFetchMock.mockReset();
+    safeWebSearchFetchMock.mockReset();
   });
 
   it('calls Bocha Web Search API and maps web page results', async () => {
-    proxyFetchMock.mockResolvedValueOnce(
+    safeWebSearchFetchMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           code: 200,
@@ -49,7 +49,8 @@ describe('searchWithBocha', () => {
       maxResults: 100,
     });
 
-    expect(proxyFetchMock).toHaveBeenCalledWith(
+    expect(safeWebSearchFetchMock).toHaveBeenCalledWith(
+      'bocha',
       'https://api.bocha.cn/v1/web-search',
       expect.objectContaining({
         method: 'POST',
@@ -84,7 +85,7 @@ describe('searchWithBocha', () => {
   });
 
   it('supports custom base URLs ending at either host, /v1, or full endpoint', async () => {
-    proxyFetchMock.mockImplementation(() =>
+    safeWebSearchFetchMock.mockImplementation(() =>
       Promise.resolve(
         new Response(JSON.stringify({ code: 200, data: { webPages: { value: [] } } }), {
           status: 200,
@@ -101,7 +102,7 @@ describe('searchWithBocha', () => {
       baseUrl: 'https://proxy.example.com/v1/web-search',
     });
 
-    expect(proxyFetchMock.mock.calls.map((call) => call[0])).toEqual([
+    expect(safeWebSearchFetchMock.mock.calls.map((call) => call[1])).toEqual([
       'https://proxy.example.com/v1/web-search',
       'https://proxy.example.com/v1/web-search',
       'https://proxy.example.com/v1/web-search',
@@ -109,7 +110,7 @@ describe('searchWithBocha', () => {
   });
 
   it('includes Bocha error details when requests fail', async () => {
-    proxyFetchMock.mockResolvedValueOnce(
+    safeWebSearchFetchMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           code: '403',
