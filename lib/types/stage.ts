@@ -97,12 +97,23 @@ export interface QuizQuestion {
 
 /**
  * Interactive content - Interactive web page (iframe)
+ *
+ * Optional Deep Interactive Mode fields (Phase 7.3a+) describe a
+ * declarative widget. When `widgetType === 'code'` and the
+ * INTERACTIVE_WIDGET_CODE_ENABLED flag is on, the renderer attaches a
+ * postMessage bridge so the player can drive the widget via TeacherActions.
+ * Until other widget flags ship (7.3b–e) the corresponding widgetTypes
+ * fall back to the legacy HTML-only path.
  */
 export interface InteractiveContent {
   type: 'interactive';
   url: string; // URL of the interactive page
   // Optional: embedded HTML content
   html?: string;
+  // Deep Interactive Mode fields (Phase 7.3a baseline)
+  widgetType?: import('./widgets').WidgetType;
+  widgetConfig?: import('./widgets').WidgetConfig;
+  teacherActions?: import('./widgets').TeacherAction[];
 }
 
 /**
