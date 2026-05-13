@@ -89,6 +89,34 @@ describe('isBlockedIPv6', () => {
   it('blocks IPv4-mapped private', () => {
     expect(isBlockedIPv6('::ffff:10.0.0.1')).toBe(true);
   });
+
+  // Upstream PR #386 hardenings — DNS rebinding integration #06.
+  it('blocks deprecated site-local fec0::/10', () => {
+    expect(isBlockedIPv6('fec0::1')).toBe(true);
+    expect(isBlockedIPv6('feff::1')).toBe(true);
+  });
+
+  it('blocks 6to4 tunnel embedding private IPv4', () => {
+    // 2002:7f00:0001:: → embedded 127.0.0.1
+    expect(isBlockedIPv6('2002:7f00:0001::')).toBe(true);
+    // 2002:0a00:0001:: → embedded 10.0.0.1
+    expect(isBlockedIPv6('2002:0a00:0001::')).toBe(true);
+  });
+
+  it('allows 6to4 tunnel embedding public IPv4', () => {
+    // 2002:0808:0808:: → embedded 8.8.8.8 (public)
+    expect(isBlockedIPv6('2002:0808:0808::')).toBe(false);
+  });
+
+  it('blocks Teredo tunnel embedding private IPv4', () => {
+    // Client 127.0.0.1 XOR 0xFFFFFFFF = 0x80FFFFFE → hextets 80ff:fffe
+    expect(isBlockedIPv6('2001:0000:4136:e378:8000:63bf:80ff:fffe')).toBe(true);
+  });
+
+  it('allows Teredo tunnel embedding public IPv4', () => {
+    // Client 8.8.8.8 XOR 0xFFFFFFFF = 0xF7F7F7F7 → hextets f7f7:f7f7
+    expect(isBlockedIPv6('2001:0000:4136:e378:8000:63bf:f7f7:f7f7')).toBe(false);
+  });
 });
 
 describe('validateUrlForSSRF (async, with DNS)', () => {
@@ -155,6 +183,24 @@ describe('validateUrlForSSRF (async, with DNS)', () => {
       ],
     });
     expect(await validateUrlForSSRF('https://evil.example.com/')).not.toBeNull();
+  });
+
+  // Upstream PR #386 — tunnel-embedded private IPv4. No DNS lookup needed: literal.
+  it('blocks 6to4 tunnel literals embedding private IPv4', async () => {
+    expect(await validateUrlForSSRF('http://[2002:7f00:0001::]/')).not.toBeNull();
+    expect(dnsLookup).not.toHaveBeenCalled();
+  });
+
+  it('blocks Teredo tunnel literals embedding private IPv4', async () => {
+    expect(
+      await validateUrlForSSRF('http://[2001:0000:4136:e378:8000:63bf:80ff:fffe]/'),
+    ).not.toBeNull();
+    expect(dnsLookup).not.toHaveBeenCalled();
+  });
+
+  it('blocks deprecated site-local fec0::/10 literals', async () => {
+    expect(await validateUrlForSSRF('http://[fec0::1]/')).not.toBeNull();
+    expect(dnsLookup).not.toHaveBeenCalled();
   });
 });
 
