@@ -32,13 +32,59 @@ export const translations = {
 
 export type TranslationKey = keyof (typeof translations)[typeof defaultLocale];
 
-export function translate(locale: Locale, key: string): string {
+function resolveKey(locale: Locale, key: string): string | undefined {
   const keys = key.split('.');
   let value: unknown = translations[locale];
   for (const k of keys) {
     value = (value as Record<string, unknown>)?.[k];
   }
-  return (typeof value === 'string' ? value : undefined) ?? key;
+  return typeof value === 'string' ? value : undefined;
+}
+
+export function translate(locale: Locale, key: string): string {
+  // Try active locale; fall back to en-US; otherwise return the key itself
+  // so dev sees the missing key in UI rather than a blank string.
+  const direct = resolveKey(locale, key);
+  if (direct !== undefined) return direct;
+  if (locale !== 'en-US') {
+    const fallback = resolveKey('en-US', key);
+    if (fallback !== undefined) return fallback;
+  }
+  return key;
+}
+
+/**
+ * Substitutes named placeholders like `{name}` inside a translated string.
+ *
+ *   interpolate('Hello {name}, you have {count} items', { name: 'Anna', count: 3 })
+ *   // => 'Hello Anna, you have 3 items'
+ *
+ * Placeholders that are missing in `vars` are left untouched so the bug is visible.
+ */
+export function interpolate(template: string, vars: Record<string, string | number>): string {
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => {
+    const value = vars[name];
+    return value === undefined || value === null ? match : String(value);
+  });
+}
+
+/**
+ * Picks one of three Russian-style plural forms based on the count.
+ * Falls back to the third form for `many`/`other`/`zero` categories.
+ *
+ *   plural(1, ['элемент', 'элемента', 'элементов']) // => 'элемент'
+ *   plural(2, ['элемент', 'элемента', 'элементов']) // => 'элемента'
+ *   plural(5, ['элемент', 'элемента', 'элементов']) // => 'элементов'
+ */
+export function plural(
+  n: number,
+  forms: [one: string, few: string, many: string],
+  locale: string = 'ru-RU',
+): string {
+  const rule = new Intl.PluralRules(locale).select(n);
+  if (rule === 'one') return forms[0];
+  if (rule === 'few') return forms[1];
+  return forms[2];
 }
 
 export function getClientTranslation(key: string): string {
