@@ -15,6 +15,14 @@ const CONFIGURED_ORIGINS = (process.env.NEXT_PUBLIC_PARENT_ORIGINS ?? '')
   .map((o) => o.trim())
   .filter(Boolean);
 
+// Время начала урока: фиксируем на первом scene:change (когда открыт первый
+// слайд). Используется для вычисления completion_time в lesson:end / lesson:complete.
+let lessonStartedAtMs: number | null = null;
+
+function ensureLessonStart(): void {
+  if (lessonStartedAtMs == null) lessonStartedAtMs = Date.now();
+}
+
 function post(type: string, payload: Record<string, unknown>): void {
   if (typeof window === 'undefined') return;
   if (window.parent === window) return; // не в iframe
@@ -34,6 +42,7 @@ function post(type: string, payload: Record<string, unknown>): void {
 
 export const playerBridge = {
   sceneChanged(sceneIndex: number, sceneId: string, totalScenes: number): void {
+    ensureLessonStart();
     post('scene:change', { sceneIndex, sceneId, totalScenes });
   },
 
@@ -41,12 +50,36 @@ export const playerBridge = {
     post('quiz:answer', { sceneId, correct, total });
   },
 
+  /**
+   * Эмитит `lesson:end` (исторический канал, родительский osvaivai PlayerPage уже его
+   * слушает) и дублирует `lesson:complete` (upstream-стиль, для будущих интеграций).
+   *
+   * Обратно-совместимые поля: totalScenes, lastSceneType, correct, total.
+   * Новые опциональные поля (Phase 7.2 / upstream #11):
+   *   - completion_time: миллисекунды с первого scene:change (≈ время от открытия
+   *     первого слайда до завершения). Если first scene:change не зафиксирован —
+   *     поле отсутствует.
+   *   - quiz_score: 0..1, доля верных ответов (correct/total) в финальном quiz-блоке.
+   *     Если total === 0 — отсутствует.
+   *
+   * Все новые поля опциональны: старые consumers (osvaivai PlayerPage::lesson:end)
+   * продолжают работать без изменений.
+   */
   lessonEnded(payload: {
     totalScenes: number;
     lastSceneType?: string;
     correct?: number;
     total?: number;
   }): void {
-    post('lesson:end', payload);
+    const enriched: Record<string, unknown> = { ...payload };
+    if (lessonStartedAtMs != null) {
+      enriched.completion_time = Date.now() - lessonStartedAtMs;
+    }
+    if (typeof payload.total === 'number' && payload.total > 0) {
+      enriched.quiz_score = (payload.correct ?? 0) / payload.total;
+    }
+    post('lesson:end', enriched);
+    // Дубль upstream-имени события — родителю достаточно слушать любое одно.
+    post('lesson:complete', enriched);
   },
 };

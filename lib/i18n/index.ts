@@ -41,16 +41,25 @@ function resolveKey(locale: Locale, key: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-export function translate(locale: Locale, key: string): string {
+export function translate(
+  locale: Locale,
+  key: string,
+  vars?: Record<string, string | number>,
+): string {
   // Try active locale; fall back to en-US; otherwise return the key itself
   // so dev sees the missing key in UI rather than a blank string.
-  const direct = resolveKey(locale, key);
-  if (direct !== undefined) return direct;
-  if (locale !== 'en-US') {
-    const fallback = resolveKey('en-US', key);
-    if (fallback !== undefined) return fallback;
+  let str = resolveKey(locale, key);
+  if (str === undefined && locale !== 'en-US') {
+    str = resolveKey('en-US', key);
   }
-  return key;
+  let result = str ?? key;
+  if (vars) {
+    // Поддерживаем оба плейсхолдера: {{name}} (upstream-стиль) и {name}.
+    result = result.replace(/\{\{?\s*(\w+)\s*\}?\}/g, (m, name: string) =>
+      Object.prototype.hasOwnProperty.call(vars, name) ? String(vars[name]) : m,
+    );
+  }
+  return result;
 }
 
 /**

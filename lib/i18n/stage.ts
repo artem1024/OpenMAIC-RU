@@ -12,6 +12,22 @@ export const stageZhCN = {
     invalidInteractive: '无效的互动内容',
     invalidPbl: '无效的PBL内容',
     unknownType: '未知场景类型',
+    courseComplete: '课程完成',
+  },
+  classroomComplete: {
+    title: '课程完成',
+    trailLabels: {
+      slide: '页',
+      quiz: '小测',
+      interactive: '互动',
+      pbl: '项目',
+    },
+    quizScoreLabel: '答对 {{correct}} / {{total}}',
+    encouragement: {
+      high: '太棒了，完美发挥！',
+      mid: '表现不错，继续加油！',
+      low: '万事开头难，回去再练练吧。',
+    },
   },
   whiteboard: {
     title: '互动白板',
@@ -178,6 +194,22 @@ export const stageRuRU = {
     invalidInteractive: 'Недопустимое интерактивное содержимое',
     invalidPbl: 'Недопустимое содержимое PBL',
     unknownType: 'Неизвестный тип сцены',
+    courseComplete: 'Курс завершён',
+  },
+  classroomComplete: {
+    title: 'Курс завершён',
+    trailLabels: {
+      slide: 'страниц',
+      quiz: 'тестов',
+      interactive: 'интерактивов',
+      pbl: 'проектов',
+    },
+    quizScoreLabel: 'Верно {{correct}} из {{total}}',
+    encouragement: {
+      high: 'Отлично — Вы справились!',
+      mid: 'Хорошая работа — продолжайте.',
+      low: 'Неплохое начало — повторите ещё раз.',
+    },
   },
   whiteboard: {
     title: 'Интерактивная доска',
@@ -344,6 +376,22 @@ export const stageEnUS = {
     invalidInteractive: 'Invalid interactive content',
     invalidPbl: 'Invalid PBL content',
     unknownType: 'Unknown scene type',
+    courseComplete: 'Course complete',
+  },
+  classroomComplete: {
+    title: 'Course complete',
+    trailLabels: {
+      slide: 'pages',
+      quiz: 'quizzes',
+      interactive: 'interactives',
+      pbl: 'projects',
+    },
+    quizScoreLabel: '{{correct}} / {{total}} correct',
+    encouragement: {
+      high: 'Outstanding — you nailed it.',
+      mid: 'Solid work — keep it up.',
+      low: 'A good start — review and try again.',
+    },
   },
   whiteboard: {
     title: 'Interactive Whiteboard',

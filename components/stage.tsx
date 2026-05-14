@@ -46,8 +46,15 @@ export function Stage({
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const isEmbedded = searchParams?.get('embedded') === '1';
-  const { mode, getCurrentScene, scenes, currentSceneId, setCurrentSceneId, generatingOutlines } =
-    useStageStore();
+  const {
+    mode,
+    getCurrentScene,
+    scenes,
+    currentSceneId,
+    setCurrentSceneId,
+    generatingOutlines,
+    outlines,
+  } = useStageStore();
   const failedOutlines = useStageStore.use.failedOutlines();
 
   const currentScene = getCurrentScene();
@@ -624,8 +631,8 @@ export function Stage({
     const currentIndex = scenes.findIndex((s) => s.id === currentSceneId);
     if (currentIndex < scenes.length - 1) {
       gatedSceneSwitch(scenes[currentIndex + 1].id);
-    } else if (hasNextPending) {
-      // On last real scene → advance to pending page
+    } else if (canAdvanceToPendingSlot) {
+      // On last real scene → advance to pending slot (generating or completion page)
       setCurrentSceneId(PENDING_SCENE_ID);
     }
   };
@@ -633,10 +640,23 @@ export function Stage({
   // get scene information
   const isPendingScene = currentSceneId === PENDING_SCENE_ID;
   const hasNextPending = generatingOutlines.length > 0;
+  // True when every outline has materialized into a scene and nothing is
+  // currently generating — signals the classroom has finished and the user
+  // can see a completion page. Comparing scenes.length === outlines.length
+  // (rather than just `scenes.length > 0`) means a partial generation with
+  // some failed outlines does not falsely trigger completion.
+  // Gated by END_OF_COURSE_PAGE feature flag (default off in osvaivai fork).
+  const endOfCoursePageEnabled = process.env.NEXT_PUBLIC_END_OF_COURSE_PAGE === '1';
+  const isCourseComplete =
+    endOfCoursePageEnabled &&
+    outlines.length > 0 &&
+    scenes.length === outlines.length &&
+    generatingOutlines.length === 0;
+  const canAdvanceToPendingSlot = hasNextPending || isCourseComplete;
   const currentSceneIndex = isPendingScene
     ? scenes.length
     : scenes.findIndex((s) => s.id === currentSceneId);
-  const totalScenesCount = scenes.length + (hasNextPending ? 1 : 0);
+  const totalScenesCount = scenes.length + (canAdvanceToPendingSlot ? 1 : 0);
 
   // get action information
   const totalActions = currentScene?.actions?.length || 0;
@@ -688,13 +708,19 @@ export function Stage({
           onCollapseChange={setSidebarCollapsed}
           onSceneSelect={gatedSceneSwitch}
           onRetryOutline={onRetryOutline}
+          isCourseComplete={isCourseComplete}
         />
       )}
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0 relative">
         {/* Header */}
-        <Header currentSceneTitle={currentScene?.title || ''} />
+        <Header
+          currentSceneTitle={
+            currentScene?.title ||
+            (isCourseComplete && isPendingScene ? t('stage.courseComplete') : '')
+          }
+        />
 
         {/* Canvas Area */}
         <div
@@ -729,6 +755,7 @@ export function Stage({
             onStopDiscussion={handleStopDiscussion}
             hideToolbar={mode === 'playback'}
             isPendingScene={isPendingScene}
+            isCourseComplete={isCourseComplete}
             isGenerationFailed={
               isPendingScene && failedOutlines.some((f) => f.id === generatingOutlines[0]?.id)
             }
