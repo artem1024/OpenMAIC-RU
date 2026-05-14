@@ -14,7 +14,8 @@ export type PromptId =
   | 'interactive-scientific-model'
   | 'interactive-html'
   | 'interactive-actions'
-  | 'pbl-actions';
+  | 'pbl-actions'
+  | 'web-search-query-rewrite';
 
 /**
  * Snippet identifier

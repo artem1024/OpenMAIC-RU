@@ -366,6 +366,9 @@ const getDefaultWebSearchConfig = () => ({
   webSearchProviderId: 'tavily' as WebSearchProviderId,
   webSearchProvidersConfig: {
     tavily: { apiKey: '', baseUrl: '', enabled: true },
+    bocha: { apiKey: '', baseUrl: '', enabled: false },
+    brave: { apiKey: '', baseUrl: '', enabled: false },
+    baidu: { apiKey: '', baseUrl: '', enabled: false },
   } as Record<WebSearchProviderId, { apiKey: string; baseUrl: string; enabled: boolean }>,
 });
 

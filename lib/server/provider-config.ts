@@ -87,6 +87,9 @@ const VIDEO_ENV_MAP: Record<string, string> = {
 
 const WEB_SEARCH_ENV_MAP: Record<string, string> = {
   TAVILY: 'tavily',
+  BOCHA: 'bocha',
+  BRAVE: 'brave',
+  BAIDU: 'baidu',
 };
 
 // ---------------------------------------------------------------------------
@@ -379,7 +382,7 @@ export function resolveVideoBaseUrl(
 }
 
 // ---------------------------------------------------------------------------
-// Public API — Web Search (Tavily)
+// Public API — Web Search (multi-provider: tavily, brave, bocha, baidu)
 // ---------------------------------------------------------------------------
 
 /** Returns server-configured web search providers (no apiKeys exposed) */
@@ -393,10 +396,56 @@ export function getServerWebSearchProviders(): Record<string, { baseUrl?: string
   return result;
 }
 
-/** Resolve Tavily API key: client key > server key > TAVILY_API_KEY env > empty */
-export function resolveWebSearchApiKey(clientKey?: string): string {
-  if (clientKey) return clientKey;
-  const serverKey = getConfig().webSearch.tavily?.apiKey;
+/**
+ * Resolve a web-search provider API key.
+ *
+ * Backward-compatible call shapes:
+ *   resolveWebSearchApiKey(clientKey)              -> Tavily resolution (legacy)
+ *   resolveWebSearchApiKey(providerId, clientKey)  -> per-provider resolution
+ *
+ * Resolution order: client key > server YAML key > <PROVIDER>_API_KEY env > '' .
+ */
+export function resolveWebSearchApiKey(clientKey?: string): string;
+export function resolveWebSearchApiKey(providerId: string, clientKey?: string): string;
+export function resolveWebSearchApiKey(
+  providerIdOrClientKey?: string,
+  clientKey?: string,
+): string {
+  const hasProviderId = arguments.length >= 2;
+  const providerId = hasProviderId ? providerIdOrClientKey || 'tavily' : 'tavily';
+  const effectiveClientKey = hasProviderId ? clientKey : providerIdOrClientKey;
+
+  if (effectiveClientKey) return effectiveClientKey;
+  const serverKey = getConfig().webSearch[providerId]?.apiKey;
   if (serverKey) return serverKey;
-  return process.env.TAVILY_API_KEY || '';
+  // Legacy env var fallback for tavily only (matches old behaviour); other
+  // providers must come from YAML or env via WEB_SEARCH_ENV_MAP loader.
+  if (providerId === 'tavily') return process.env.TAVILY_API_KEY || '';
+  return '';
+}
+
+/** Resolve a web-search provider base URL (client > server YAML; no env fallback). */
+export function resolveWebSearchBaseUrl(
+  providerId: string,
+  clientBaseUrl?: string,
+): string | undefined {
+  if (clientBaseUrl) return clientBaseUrl;
+  return getConfig().webSearch[providerId]?.baseUrl;
+}
+
+/**
+ * Pick a usable provider id when the client did not specify one. Preference:
+ *   1. caller's preferred id, if it has a key
+ *   2. tavily, then bocha, then baidu, then any remaining configured provider
+ */
+export function resolveServerWebSearchProviderId(
+  preferredProviderId?: string,
+): string | undefined {
+  const webSearch = getConfig().webSearch;
+  if (preferredProviderId && webSearch[preferredProviderId]?.apiKey) return preferredProviderId;
+  if (webSearch.tavily?.apiKey) return 'tavily';
+  if (webSearch.bocha?.apiKey) return 'bocha';
+  if (webSearch.baidu?.apiKey) return 'baidu';
+  if (webSearch.brave) return 'brave'; // brave has scrape mode (no key required)
+  return Object.keys(webSearch)[0];
 }
