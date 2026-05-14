@@ -472,6 +472,7 @@ export const settingsZhCN = {
     mineruWarning: '注意',
     mineruCostWarning: 'MinerU 为商用服务，使用可能产生费用。请查看 MinerU 官网了解定价详情。',
     enterMinerUApiKey: '输入 MinerU API Key',
+    mineruCloudApiKeyPlaceholder: '输入 MinerU Cloud API Key',
     mineruLocalDescription:
       'MinerU 支持本地部署，提供高级 PDF 解析功能（表格、公式、布局分析）。需要先部署 MinerU 服务。',
     mineruServerAddress: '本地 MinerU 服务器地址（如：http://localhost:8080）',
@@ -1073,6 +1074,7 @@ export const settingsRuRU = {
     mineruCostWarning:
       'MinerU — коммерческий сервис, использование может быть платным. Подробнее о ценах на сайте MinerU.',
     enterMinerUApiKey: 'Введите API-ключ MinerU',
+    mineruCloudApiKeyPlaceholder: 'Введите API-ключ MinerU Cloud',
     mineruLocalDescription:
       'MinerU поддерживает локальное развёртывание с продвинутым парсингом PDF (таблицы, формулы, анализ макета). Требуется предварительное развёртывание сервиса MinerU.',
     mineruServerAddress: 'Адрес локального сервера MinerU (например: http://localhost:8080)',
@@ -1677,6 +1679,7 @@ export const settingsEnUS = {
     mineruCostWarning:
       'MinerU is a commercial service and may incur fees. Please check the MinerU website for pricing details.',
     enterMinerUApiKey: 'Enter MinerU API Key',
+    mineruCloudApiKeyPlaceholder: 'Enter MinerU Cloud API Key',
     mineruLocalDescription:
       'MinerU supports local deployment with advanced PDF parsing (tables, formulas, layout analysis). Requires deploying MinerU service first.',
     mineruServerAddress: 'Local MinerU server address (e.g., http://localhost:8080)',
