@@ -195,35 +195,47 @@ export interface ResolvedHost {
 /**
  * Resolve hostname to ALL A/AAAA records and return the first-validated-safe one.
  * Rejects if any resolved address is in a blocked range.
+ *
+ * `allowPrivate` skips the private-IP block check (still resolves DNS); used
+ * by docker-compose flows where an upstream host (e.g. MinIO) sits on a
+ * private network that the caller has explicitly opted into.
  */
-export async function resolveAndValidateHost(hostname: string): Promise<
+export async function resolveAndValidateHost(
+  hostname: string,
+  options: { allowPrivate?: boolean } = {},
+): Promise<
   { ok: true; resolved: ResolvedHost[] } | { ok: false; reason: string }
 > {
+  const allowPrivate = options.allowPrivate === true;
   const cleaned = stripV6Brackets(hostname).toLowerCase();
 
   // Obviously banned literal names.
-  if (cleaned === 'localhost' || cleaned === 'ip6-localhost' || cleaned === 'ip6-loopback') {
-    return { ok: false, reason: 'Local/private hostname is not allowed' };
-  }
-  if (cleaned.endsWith('.localhost') || cleaned.endsWith('.local') || cleaned.endsWith('.internal') || cleaned.endsWith('.lan')) {
-    return { ok: false, reason: 'Local/private hostname is not allowed' };
+  if (!allowPrivate) {
+    if (cleaned === 'localhost' || cleaned === 'ip6-localhost' || cleaned === 'ip6-loopback') {
+      return { ok: false, reason: 'Local/private hostname is not allowed' };
+    }
+    if (cleaned.endsWith('.localhost') || cleaned.endsWith('.local') || cleaned.endsWith('.internal') || cleaned.endsWith('.lan')) {
+      return { ok: false, reason: 'Local/private hostname is not allowed' };
+    }
   }
 
   // If hostname is already an IP literal (including alt forms), validate directly.
   if (net.isIP(cleaned)) {
     const family = net.isIPv4(cleaned) ? 4 : 6;
-    if (family === 4 && isBlockedIPv4(cleaned)) {
-      return { ok: false, reason: 'Resolved IP is in a blocked range' };
-    }
-    if (family === 6 && isBlockedIPv6(cleaned)) {
-      return { ok: false, reason: 'Resolved IP is in a blocked range' };
+    if (!allowPrivate) {
+      if (family === 4 && isBlockedIPv4(cleaned)) {
+        return { ok: false, reason: 'Resolved IP is in a blocked range' };
+      }
+      if (family === 6 && isBlockedIPv6(cleaned)) {
+        return { ok: false, reason: 'Resolved IP is in a blocked range' };
+      }
     }
     return { ok: true, resolved: [{ hostname: cleaned, ip: cleaned, family }] };
   }
 
   const alt = decodeAlternativeIPv4(cleaned);
   if (alt) {
-    if (isBlockedIPv4(alt)) {
+    if (!allowPrivate && isBlockedIPv4(alt)) {
       return { ok: false, reason: 'Alternative IP form resolves to a blocked range' };
     }
     return { ok: true, resolved: [{ hostname: cleaned, ip: alt, family: 4 }] };
@@ -244,12 +256,12 @@ export async function resolveAndValidateHost(hostname: string): Promise<
   const resolved: ResolvedHost[] = [];
   for (const a of addrs) {
     if (a.family === 4) {
-      if (isBlockedIPv4(a.address)) {
+      if (!allowPrivate && isBlockedIPv4(a.address)) {
         return { ok: false, reason: `Resolved IP ${a.address} is in a blocked range` };
       }
       resolved.push({ hostname: cleaned, ip: a.address, family: 4 });
     } else if (a.family === 6) {
-      if (isBlockedIPv6(a.address)) {
+      if (!allowPrivate && isBlockedIPv6(a.address)) {
         return { ok: false, reason: `Resolved IP ${a.address} is in a blocked range` };
       }
       resolved.push({ hostname: cleaned, ip: a.address, family: 6 });
@@ -302,7 +314,7 @@ export async function validateUrlForSSRF(url: string): Promise<string | null> {
  */
 export async function ssrfSafeFetch(
   url: string,
-  init: UndiciRequestInit = {},
+  init: UndiciRequestInit & { allowPrivateIps?: boolean } = {},
 ): Promise<UndiciResponse> {
   let parsed: URL;
   try {
@@ -315,7 +327,9 @@ export async function ssrfSafeFetch(
   }
   const hostname = parsed.hostname;
   const servername = stripV6Brackets(hostname);
-  const resolution = await resolveAndValidateHost(hostname);
+  const resolution = await resolveAndValidateHost(hostname, {
+    allowPrivate: init.allowPrivateIps === true,
+  });
   if (!resolution.ok) throw new Error(resolution.reason);
 
   // Pick first (prefer IPv4 for deterministic behavior).
@@ -363,8 +377,11 @@ export async function ssrfSafeFetch(
     headers.set('host', parsed.host);
   }
 
+  // Strip our extension flag before forwarding to undici.
+  const { allowPrivateIps: _ignored, ...undiciInit } = init;
+
   return undiciFetch(url, {
-    ...init,
+    ...undiciInit,
     headers,
     dispatcher: agent,
   });

@@ -488,6 +488,10 @@ export async function POST(req: NextRequest) {
           signal: controller.signal,
           // No-cache: signed URLs are single-use by design.
           headers: { 'cache-control': 'no-cache' },
+          // ALLOW_PRIVATE_OSVAIVAI escape hatch must apply at fetch time too:
+          // host allowlist already passed Gate 1; without this, MinIO on a
+          // private docker network would be unreachable even with the env flag.
+          allowPrivateIps: allowPriv,
         });
         if (!resp.ok) {
           await safeRm(stagingDir);
