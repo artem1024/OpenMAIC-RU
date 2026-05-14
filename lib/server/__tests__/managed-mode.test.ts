@@ -44,6 +44,7 @@ describe('resolve-model managed mode', () => {
 
   afterEach(() => {
     process.env = originalEnv;
+    vi.unstubAllEnvs();
   });
 
   async function loadResolveModel() {
@@ -92,7 +93,7 @@ describe('resolve-model managed mode', () => {
 
   test('managed: no baseUrl means no SSRF check on request path', async () => {
     process.env.MANAGED_PROVIDER_MODE = '1';
-    process.env.NODE_ENV = 'production';
+    vi.stubEnv('NODE_ENV', 'production');
     const { resolveModel } = await loadResolveModel();
 
     // In non-managed mode, this would trigger SSRF check on "evil" URL
@@ -108,7 +109,7 @@ describe('resolve-model managed mode', () => {
 
   test('non-managed + production: SSRF check fires on suspicious baseUrl', async () => {
     delete process.env.MANAGED_PROVIDER_MODE;
-    process.env.NODE_ENV = 'production';
+    vi.stubEnv('NODE_ENV', 'production');
     const { resolveModel } = await loadResolveModel();
 
     expect(() =>
