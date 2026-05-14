@@ -3,6 +3,7 @@ import {
   isWidgetMessage,
   type DiagramConfig,
   type SimulationConfig,
+  type Visualization3DConfig,
   type WidgetConfig,
   type WidgetToPlayerMessage,
 } from '@/lib/types/widgets';
@@ -49,6 +50,32 @@ describe('isWidgetMessage type guard', () => {
       payload: {
         variables: { angle: 30 },
       },
+    };
+    expect(isWidgetMessage(msg)).toBe(true);
+  });
+
+  it('accepts widget:visualization3d:result with full payload', () => {
+    const msg: WidgetToPlayerMessage = {
+      source: 'openmaic-widget',
+      type: 'widget:visualization3d:result',
+      payload: {
+        activeObjectId: 'earth',
+        cameraState: {
+          position: { x: 0, y: 0, z: 5 },
+          target: { x: 0, y: 0, z: 0 },
+          zoom: 1.5,
+        },
+        activePresetName: 'View Earth',
+      },
+    };
+    expect(isWidgetMessage(msg)).toBe(true);
+  });
+
+  it('accepts widget:visualization3d:result with empty payload (free orbit)', () => {
+    const msg: WidgetToPlayerMessage = {
+      source: 'openmaic-widget',
+      type: 'widget:visualization3d:result',
+      payload: {},
     };
     expect(isWidgetMessage(msg)).toBe(true);
   });
@@ -152,5 +179,110 @@ describe('SimulationConfig (Phase 7.3c)', () => {
     expect(minimal.teacherActions).toBeUndefined();
     expect(minimal.variables[0].unit).toBeUndefined();
     expect(minimal.variables[0].step).toBeUndefined();
+  });
+});
+
+describe('Visualization3DConfig (Phase 7.3d)', () => {
+  it('compiles as a valid WidgetConfig discriminant with full shape', () => {
+    const cfg: WidgetConfig = {
+      type: 'visualization3d',
+      visualizationType: 'solar',
+      description: 'Earth orbiting the Sun with the Moon attached.',
+      objects: [
+        {
+          id: 'sun',
+          type: 'sphere',
+          name: 'Sun',
+          position: { x: 0, y: 0, z: 0 },
+          scale: 2,
+          material: { type: 'emissive', color: '#ffaa00', emissive: '#ffaa00' },
+        },
+        {
+          id: 'earth',
+          type: 'sphere',
+          name: 'Earth',
+          position: { x: 5, y: 0, z: 0 },
+          material: { type: 'phong', color: '#3366ff' },
+          animation: { type: 'orbit', speed: 1, axis: 'y' },
+          children: [
+            {
+              id: 'moon',
+              type: 'sphere',
+              position: { x: 1, y: 0, z: 0 },
+              scale: 0.3,
+              material: { type: 'lambert', color: '#cccccc' },
+            },
+          ],
+        },
+      ],
+      interactions: [
+        { type: 'orbit', target: 'camera', label: 'Orbit' },
+        { type: 'button', target: 'sun', label: 'Focus Sun' },
+        { type: 'slider', target: 'earth', param: 'speed', min: 0, max: 5, default: 1, step: 0.1 },
+      ],
+      camera: {
+        position: { x: 0, y: 5, z: 10 },
+        target: { x: 0, y: 0, z: 0 },
+        fov: 60,
+      },
+      lighting: {
+        ambient: { color: '#ffffff', intensity: 0.5 },
+        directional: [
+          { color: '#ffffff', intensity: 1.2, position: { x: 5, y: 10, z: 5 } },
+        ],
+        point: [
+          { color: '#ffaa00', intensity: 1, position: { x: 0, y: 0, z: 0 } },
+        ],
+      },
+      presets: [
+        { name: 'View Earth', state: { cameraTarget: 'earth' } },
+        { name: 'View Sun', description: 'Get up close', state: { cameraTarget: 'sun' } },
+      ],
+    };
+    expect(cfg.type).toBe('visualization3d');
+    if (cfg.type === 'visualization3d') {
+      const v3d = cfg as Visualization3DConfig;
+      expect(v3d.objects).toHaveLength(2);
+      expect(v3d.objects[1].children?.[0].id).toBe('moon');
+      expect(v3d.interactions?.[2].param).toBe('speed');
+      expect(v3d.lighting?.directional?.[0].intensity).toBe(1.2);
+      expect(v3d.presets?.[1].description).toBe('Get up close');
+    }
+  });
+
+  it('allows omitting all optional fields (minimal config)', () => {
+    const minimal: Visualization3DConfig = {
+      type: 'visualization3d',
+      visualizationType: 'geometry',
+      description: 'A single cube.',
+      objects: [{ id: 'cube', type: 'box' }],
+    };
+    expect(minimal.interactions).toBeUndefined();
+    expect(minimal.camera).toBeUndefined();
+    expect(minimal.lighting).toBeUndefined();
+    expect(minimal.presets).toBeUndefined();
+    expect(minimal.teacherActions).toBeUndefined();
+    expect(minimal.objects[0].material).toBeUndefined();
+    expect(minimal.objects[0].animation).toBeUndefined();
+  });
+
+  it('accepts numeric and per-axis scale, all material types, all animation types', () => {
+    const cfg: Visualization3DConfig = {
+      type: 'visualization3d',
+      visualizationType: 'molecular',
+      description: 'Hydrogen atom.',
+      objects: [
+        { id: 'a', type: 'sphere', scale: 0.5 },
+        { id: 'b', type: 'cylinder', scale: { x: 1, y: 2, z: 1 } },
+        { id: 'c', type: 'torus', material: { type: 'standard', wireframe: true } },
+        { id: 'd', type: 'cone', material: { type: 'basic', transparent: true, opacity: 0.5 } },
+        { id: 'e', type: 'plane', animation: { type: 'pulse', speed: 2 } },
+        { id: 'f', type: 'custom', animation: { type: 'bounce' } },
+      ],
+    };
+    expect(cfg.objects[0].scale).toBe(0.5);
+    expect((cfg.objects[1].scale as { y: number }).y).toBe(2);
+    expect(cfg.objects[2].material?.wireframe).toBe(true);
+    expect(cfg.objects[4].animation?.type).toBe('pulse');
   });
 });
