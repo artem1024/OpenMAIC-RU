@@ -23,7 +23,7 @@ export const maxDuration = 1800;
 //   { sceneId: string, prompt?: string }
 //
 // Response:
-//   { success: true, id, sceneId, versionNo, htmlPath }
+//   { success: true, id, sceneId, versionNo, htmlPath, relativePath, sha256, contentType, html }
 //
 // Errors:
 //   400 — invalid body / scene не interactive / нет промпта
@@ -113,7 +113,12 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       if (msg.includes('did not contain a recognizable HTML document')) {
         return apiError(API_ERROR_CODES.UPSTREAM_ERROR, 502, msg);
       }
-      return apiError(API_ERROR_CODES.UPSTREAM_ERROR, 502, 'Interactive HTML generation failed', msg);
+      return apiError(
+        API_ERROR_CODES.UPSTREAM_ERROR,
+        502,
+        'Interactive HTML generation failed',
+        msg,
+      );
     }
 
     await persistClassroom(
@@ -131,6 +136,10 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       sceneId: result.sceneId,
       versionNo: result.versionNo,
       htmlPath: result.htmlPath,
+      relativePath: result.relativePath,
+      sha256: result.sha256,
+      contentType: result.contentType,
+      html: result.html,
     });
   } catch (error) {
     return apiError(

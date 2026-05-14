@@ -92,7 +92,9 @@ async function withRetries<T>(
       lastErr = err;
       if (i < attempts) {
         const delay = baseMs * Math.pow(2, i - 1);
-        log.warn(`${label} attempt ${i}/${attempts} failed, retrying in ${delay}ms: ${(err as Error)?.message || err}`);
+        log.warn(
+          `${label} attempt ${i}/${attempts} failed, retrying in ${delay}ms: ${(err as Error)?.message || err}`,
+        );
         await new Promise((r) => setTimeout(r, delay));
       }
     }
@@ -134,6 +136,34 @@ function normalizeTextForHash(text: string): string {
  */
 export function computeTextHash(text: string): string {
   return createHash('sha256').update(normalizeTextForHash(text), 'utf-8').digest('hex');
+}
+
+function computeBufferSha256(buffer: Buffer | Uint8Array): string {
+  return createHash('sha256').update(buffer).digest('hex');
+}
+
+function contentTypeForExtension(ext: string): string {
+  switch (ext.toLowerCase()) {
+    case 'mp3':
+      return 'audio/mpeg';
+    case 'wav':
+      return 'audio/wav';
+    case 'ogg':
+      return 'audio/ogg';
+    case 'png':
+      return 'image/png';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'webp':
+      return 'image/webp';
+    case 'mp4':
+      return 'video/mp4';
+    case 'html':
+      return 'text/html; charset=utf-8';
+    default:
+      return 'application/octet-stream';
+  }
 }
 
 /**
@@ -336,7 +366,10 @@ export async function generateMediaForClassroom(
           log.info(`Generated image: ${relPath}`);
         });
       } catch (err) {
-        log.warn(`Image generation failed for ${req.elementId} after ${MEDIA_GEN_ATTEMPTS} attempts:`, err);
+        log.warn(
+          `Image generation failed for ${req.elementId} after ${MEDIA_GEN_ATTEMPTS} attempts:`,
+          err,
+        );
       }
     }
   };
@@ -399,7 +432,10 @@ export async function generateMediaForClassroom(
           log.info(`Generated video: ${relPath}`);
         });
       } catch (err) {
-        log.warn(`Video generation failed for ${req.elementId} after ${MEDIA_GEN_ATTEMPTS} attempts:`, err);
+        log.warn(
+          `Video generation failed for ${req.elementId} after ${MEDIA_GEN_ATTEMPTS} attempts:`,
+          err,
+        );
       }
     }
   };
@@ -586,7 +622,12 @@ export function removeUnresolvedMediaPlaceholders(scenes: Scene[]): RemovedMedia
 }
 
 function splitSentences(text: string): string[] {
-  return text.match(/[^.!?…]+[.!?…]*/g)?.map((s) => s.trim()).filter(Boolean) ?? [text];
+  return (
+    text
+      .match(/[^.!?…]+[.!?…]*/g)
+      ?.map((s) => s.trim())
+      .filter(Boolean) ?? [text]
+  );
 }
 
 function isRemovedMediaVisualReference(sentence: string): boolean {
@@ -650,6 +691,9 @@ export interface TTSGenerationStats {
     versionNo: number;
     audioUrl: string;
     textHash: string;
+    relativePath: string;
+    sha256: string;
+    contentType: string;
   }>;
   /**
    * Speech actions whose TTS was deliberately not re-synthesized. Currently the
@@ -701,9 +745,8 @@ export async function generateTTSForClassroom(
   const skipped: TTSGenerationStats['skipped'] = [];
   const skippedActionIds = new Set<string>();
   const force = options?.force === true;
-  const actionIdFilter = options?.actionIds && options.actionIds.length > 0
-    ? new Set(options.actionIds)
-    : null;
+  const actionIdFilter =
+    options?.actionIds && options.actionIds.length > 0 ? new Set(options.actionIds) : null;
 
   // configVersion is a free-form tag describing the provider config used for
   // this generation; for now we use the ai-gateway commit hash if available,
@@ -769,7 +812,14 @@ export async function generateTTSForClassroom(
           );
         } else {
           result = await generateTTS(
-            { providerId, apiKey, baseUrl: ttsBaseUrl, voice, speed: speechAction.speed, speakerName: teacherName },
+            {
+              providerId,
+              apiKey,
+              baseUrl: ttsBaseUrl,
+              voice,
+              speed: speechAction.speed,
+              speakerName: teacherName,
+            },
             speechAction.text,
           );
         }
@@ -779,11 +829,14 @@ export async function generateTTSForClassroom(
         // existing classroom), bump the version; otherwise start at v001.
         const previousVersion = speechAction.tts?.currentVersion ?? 0;
         const nextVersion = previousVersion + 1;
+        const outputFormat = (result.format || format).replace(/^\./u, '').toLowerCase();
         const versionTag = formatVersionTag(nextVersion);
-        const relPath = `audio/${action.id}/${versionTag}.${format}`;
-        const absPath = path.join(audioDir, action.id, `${versionTag}.${format}`);
+        const relPath = `audio/${action.id}/${versionTag}.${outputFormat}`;
+        const absPath = path.join(audioDir, action.id, `${versionTag}.${outputFormat}`);
         await ensureDir(path.dirname(absPath));
         await fs.writeFile(absPath, result.audio);
+        const sha256 = computeBufferSha256(result.audio);
+        const contentType = contentTypeForExtension(outputFormat);
 
         const audioUrl = mediaServingUrl(baseUrl, classroomId, relPath);
         const generatedAt = new Date().toISOString();
@@ -803,7 +856,7 @@ export async function generateTTSForClassroom(
           providerId,
           model: voice, // The provider model is implicit; voice identifies the model variant.
           voice,
-          format,
+          format: outputFormat,
           ...(typeof speechAction.speed === 'number' ? { speed: speechAction.speed } : {}),
           ...(teacherName ? { speakerName: teacherName } : {}),
           textHash,
@@ -820,6 +873,9 @@ export async function generateTTSForClassroom(
           versionNo: nextVersion,
           audioUrl,
           textHash,
+          relativePath: relPath,
+          sha256,
+          contentType,
         });
         log.info(`Generated TTS [${providerId}]: ${relPath} (${result.audio.length} bytes)`);
       }
@@ -830,7 +886,10 @@ export async function generateTTSForClassroom(
     await runPass(primaryId, true);
   } catch (err) {
     if (!secondaryId) {
-      log.warn(`Classroom ${classroomId}: primary TTS "${primaryId}" failed and no secondary configured:`, err);
+      log.warn(
+        `Classroom ${classroomId}: primary TTS "${primaryId}" failed and no secondary configured:`,
+        err,
+      );
       return { count: generatedCount, providerId: usedProviderId, regenerated, skipped };
     }
     log.warn(
@@ -889,7 +948,9 @@ export function findCanvasElement(
 ): { scene: Scene; element: { id: string; type: string; src?: string } } | null {
   for (const scene of scenes) {
     if (scene.type !== 'slide') continue;
-    const canvas = (scene.content as { canvas?: { elements?: Array<{ id: string; type: string; src?: string }> } }).canvas;
+    const canvas = (
+      scene.content as { canvas?: { elements?: Array<{ id: string; type: string; src?: string }> } }
+    ).canvas;
     const elements = canvas?.elements;
     if (!Array.isArray(elements)) continue;
     const el = elements.find((e) => e.id === elementId);
@@ -904,6 +965,11 @@ export interface AssetRegenResult {
   versionNo: number;
   src: string;
   prompt: string;
+  relativePath: string;
+  sha256: string;
+  contentType: string;
+  provider: string;
+  model: string;
 }
 
 /**
@@ -1005,7 +1071,14 @@ export async function regenerateAssetElement(
       const absPath = path.join(mediaDir, args.elementId, `${versionTag}.${ext}`);
       await ensureDir(path.dirname(absPath));
       await fs.writeFile(absPath, buf);
-      return { providerId, model: model ?? '', relPath, nextVersion };
+      return {
+        providerId,
+        model: model ?? '',
+        relPath,
+        nextVersion,
+        sha256: computeBufferSha256(buf),
+        contentType: contentTypeForExtension(ext),
+      };
     });
 
     const entry = ensureAssetEntry(manifest, args.elementId, {
@@ -1033,6 +1106,11 @@ export async function regenerateAssetElement(
       versionNo: writeOutcome.nextVersion,
       src,
       prompt: promptToUse,
+      relativePath: writeOutcome.relPath,
+      sha256: writeOutcome.sha256,
+      contentType: writeOutcome.contentType,
+      provider: writeOutcome.providerId,
+      model: writeOutcome.model,
     };
   }
 
@@ -1066,7 +1144,14 @@ export async function regenerateAssetElement(
     const absPath = path.join(mediaDir, args.elementId, `${versionTag}.mp4`);
     await ensureDir(path.dirname(absPath));
     await fs.writeFile(absPath, buf);
-    return { providerId, model: model ?? '', relPath, nextVersion };
+    return {
+      providerId,
+      model: model ?? '',
+      relPath,
+      nextVersion,
+      sha256: computeBufferSha256(buf),
+      contentType: contentTypeForExtension('mp4'),
+    };
   });
 
   const entry = ensureAssetEntry(manifest, args.elementId, {
@@ -1094,6 +1179,11 @@ export async function regenerateAssetElement(
     versionNo: writeOutcome.nextVersion,
     src,
     prompt: promptToUse,
+    relativePath: writeOutcome.relPath,
+    sha256: writeOutcome.sha256,
+    contentType: writeOutcome.contentType,
+    provider: writeOutcome.providerId,
+    model: writeOutcome.model,
   };
 }
 
@@ -1101,6 +1191,10 @@ export interface InteractiveRegenResult {
   sceneId: string;
   versionNo: number;
   htmlPath: string;
+  relativePath: string;
+  sha256: string;
+  contentType: string;
+  html: string;
 }
 
 /**
@@ -1172,6 +1266,7 @@ export async function regenerateInteractiveSlide(
 
   const sanitized = sanitizeInteractiveHtml(rawHtml);
   const processed = postProcessInteractiveHtml(sanitized);
+  const processedBuffer = Buffer.from(processed, 'utf-8');
 
   const previousVersion = existingEntry?.currentVersion ?? 0;
   const nextVersion = previousVersion + 1;
@@ -1179,7 +1274,7 @@ export async function regenerateInteractiveSlide(
   const relPath = `interactive/${args.sceneId}/${versionTag}.html`;
   const absPath = path.join(CLASSROOMS_DIR, classroomId, relPath);
   await ensureDir(path.dirname(absPath));
-  await fs.writeFile(absPath, processed, 'utf-8');
+  await fs.writeFile(absPath, processedBuffer);
 
   // Update manifest entry
   const entry: InteractiveSlideEntry = existingEntry ?? {
@@ -1210,6 +1305,10 @@ export async function regenerateInteractiveSlide(
     sceneId: args.sceneId,
     versionNo: nextVersion,
     htmlPath: relPath,
+    relativePath: relPath,
+    sha256: computeBufferSha256(processedBuffer),
+    contentType: contentTypeForExtension('html'),
+    html: processed,
   };
 }
 

@@ -79,6 +79,37 @@ export async function readClassroom(id: string): Promise<PersistedClassroomData 
   }
 }
 
+export async function deleteClassroom(id: string): Promise<{
+  deleted: boolean;
+  jsonDeleted: boolean;
+  directoryDeleted: boolean;
+}> {
+  const jsonPath = path.join(CLASSROOMS_DIR, `${id}.json`);
+  const dirPath = path.join(CLASSROOMS_DIR, id);
+
+  async function exists(target: string): Promise<boolean> {
+    try {
+      await fs.access(target);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
+  }
+
+  const jsonDeleted = await exists(jsonPath);
+  const directoryDeleted = await exists(dirPath);
+
+  await fs.rm(jsonPath, { force: true });
+  await fs.rm(dirPath, { recursive: true, force: true });
+
+  return {
+    deleted: jsonDeleted || directoryDeleted,
+    jsonDeleted,
+    directoryDeleted,
+  };
+}
+
 export async function persistClassroom(
   data: {
     id: string;

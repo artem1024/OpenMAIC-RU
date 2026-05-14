@@ -30,7 +30,7 @@ export const maxDuration = 1800;
 //     id,
 //     count,                    // = regenerated.length, для backwards-compat
 //     providerId,               // последний использованный TTS-провайдер
-//     regenerated: [{ actionId, versionNo, audioUrl, textHash }],
+//     regenerated: [{ actionId, versionNo, audioUrl, textHash, relativePath, sha256, contentType }],
 //     skipped:     [{ actionId, reason: 'textHashMatch' }]
 //   }
 //

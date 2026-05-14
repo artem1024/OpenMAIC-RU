@@ -26,7 +26,7 @@ export const maxDuration = 1800;
 //   }
 //
 // Response:
-//   { success: true, id, elementId, kind, versionNo, src, prompt }
+//   { success: true, id, elementId, kind, versionNo, src, prompt, relativePath, sha256, contentType, provider, model }
 //
 // Errors:
 //   400 — invalid body / element not image|video / нет промпта (ни в body, ни в manifest)
@@ -103,7 +103,11 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       if (msg.includes('No prompt provided')) {
         return apiError(API_ERROR_CODES.MISSING_REQUIRED_FIELD, 400, msg);
       }
-      if (msg.includes('No API key') || msg.includes('No image provider') || msg.includes('No video provider')) {
+      if (
+        msg.includes('No API key') ||
+        msg.includes('No image provider') ||
+        msg.includes('No video provider')
+      ) {
         return apiError(API_ERROR_CODES.MISSING_API_KEY, 500, msg);
       }
       return apiError(API_ERROR_CODES.UPSTREAM_ERROR, 502, 'Asset generation failed', msg);
@@ -126,6 +130,11 @@ export async function POST(req: NextRequest, context: { params: Promise<{ id: st
       versionNo: result.versionNo,
       src: result.src,
       prompt: result.prompt,
+      relativePath: result.relativePath,
+      sha256: result.sha256,
+      contentType: result.contentType,
+      provider: result.provider,
+      model: result.model,
     });
   } catch (error) {
     return apiError(
