@@ -71,7 +71,44 @@ export function isBlockedIPv4(ip: string): boolean {
   return PRIVATE_V4_CIDRS.some((cidr) => ipv4InCidr(ip, cidr));
 }
 
-/** Returns true when `ip` is a blocked IPv6 literal (loopback, link-local, ULA, IPv4-mapped to private). */
+/**
+ * Expand an IPv6 address into 8 numeric hextets. Returns null for invalid input
+ * (or for IPv4-suffix forms like `::ffff:1.2.3.4` — those are handled separately
+ * by `extractMappedIPv4`).
+ *
+ * Used by 6to4 / Teredo tunnel detection where the embedded IPv4 sits in
+ * specific hextet positions and we need stable indexing into the address.
+ */
+function expandIPv6(ip: string): number[] | null {
+  const lower = ip.toLowerCase();
+  if (!lower.includes(':')) return null;
+
+  // Reject IPv4-suffix forms here; let extractMappedIPv4 handle them.
+  const lastSegment = lower.split(':').pop() || '';
+  if (lastSegment.includes('.')) return null;
+
+  const sides = lower.split('::');
+  if (sides.length > 2) return null;
+
+  let parts: string[];
+  if (sides.length === 2) {
+    const left = sides[0] ? sides[0].split(':') : [];
+    const right = sides[1] ? sides[1].split(':') : [];
+    const missing = 8 - left.length - right.length;
+    if (missing < 0) return null;
+    parts = [...left, ...Array(missing).fill('0'), ...right];
+  } else {
+    parts = lower.split(':');
+  }
+
+  if (parts.length !== 8) return null;
+  if (parts.some((p) => p.length === 0 || !/^[0-9a-f]{1,4}$/.test(p))) return null;
+
+  return parts.map((p) => Number.parseInt(p, 16));
+}
+
+/** Returns true when `ip` is a blocked IPv6 literal (loopback, link-local, ULA, IPv4-mapped to private,
+ * deprecated site-local, or 6to4/Teredo tunnel embedding a private IPv4). */
 export function isBlockedIPv6(ip: string): boolean {
   if (!net.isIPv6(ip)) return false;
   const lower = ip.toLowerCase();
@@ -83,6 +120,8 @@ export function isBlockedIPv6(ip: string): boolean {
   if (lower.startsWith('fe8') || lower.startsWith('fe9') || lower.startsWith('fea') || lower.startsWith('feb')) return true;
   // ULA fc00::/7 (fc00-fdff)
   if (lower.startsWith('fc') || lower.startsWith('fd')) return true;
+  // Site-local fec0::/10 (deprecated, RFC 3879, but defense-in-depth — upstream PR #386)
+  if (lower.startsWith('fec') || lower.startsWith('fed') || lower.startsWith('fee') || lower.startsWith('fef')) return true;
   // Multicast ff00::/8
   if (lower.startsWith('ff')) return true;
   // IPv4-mapped IPv6: ::ffff:a.b.c.d or ::ffff:HHHH:HHHH
@@ -92,6 +131,22 @@ export function isBlockedIPv6(ip: string): boolean {
   if (/^::\d+\.\d+\.\d+\.\d+$/.test(lower)) {
     const v4 = lower.slice(2);
     if (isBlockedIPv4(v4)) return true;
+  }
+  // 6to4 tunnel 2002::/16 — embedded IPv4 sits in hextets [1..2] (bits 16-47).
+  // Block when the embedded IPv4 is private/loopback/etc. Adopted from upstream PR #386.
+  const hextets = expandIPv6(lower);
+  if (hextets) {
+    if (hextets[0] === 0x2002) {
+      const embedded = `${hextets[1] >> 8}.${hextets[1] & 0xff}.${hextets[2] >> 8}.${hextets[2] & 0xff}`;
+      if (isBlockedIPv4(embedded)) return true;
+    }
+    // Teredo tunnel 2001:0000::/32 — client IPv4 in last 32 bits, XOR-inverted.
+    if (hextets[0] === 0x2001 && hextets[1] === 0x0000) {
+      const high = hextets[6] ^ 0xffff;
+      const low = hextets[7] ^ 0xffff;
+      const embedded = `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+      if (isBlockedIPv4(embedded)) return true;
+    }
   }
   return false;
 }
