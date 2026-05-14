@@ -17,7 +17,8 @@ const log = createLogger('ServerProviderConfig');
 // ---------------------------------------------------------------------------
 
 interface ServerProviderEntry {
-  apiKey: string;
+  // Optional: keyless providers like Ollama may activate via baseUrl alone.
+  apiKey?: string;
   baseUrl?: string;
   models?: string[];
   proxy?: string;
@@ -50,6 +51,7 @@ const LLM_ENV_MAP: Record<string, string> = {
   DOUBAO: 'doubao',
   GROK: 'grok',
   LEMONADE: 'lemonade',
+  OLLAMA: 'ollama',
 };
 
 const TTS_ENV_MAP: Record<string, string> = {
@@ -263,7 +265,7 @@ function buildConfig(yamlData: YamlData): ServerConfig {
   image = gateByFeatureFlag(image, ['minimax-image'], 'MINIMAX_ENABLED');
 
   let providers = loadEnvSection(LLM_ENV_MAP, yamlData.providers, {
-    keylessProviders: new Set(['lemonade']),
+    keylessProviders: new Set(['lemonade', 'ollama']),
   });
   providers = gateByFeatureFlag(providers, ['lemonade'], 'LEMONADE_ENABLED');
   // Note: MiniMax LLM provider is preserved (already in fork base since #182);

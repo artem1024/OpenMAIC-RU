@@ -103,7 +103,6 @@ function GenerationPreviewContent() {
       'Content-Type': 'application/json',
       'x-model': modelConfig.modelString,
       'x-provider-type': modelConfig.providerType || '',
-      'x-requires-api-key': modelConfig.requiresApiKey ? 'true' : 'false',
       // Image generation provider
       'x-image-provider': settings.imageProviderId || '',
       'x-image-model': settings.imageModelId || '',
