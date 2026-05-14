@@ -1,12 +1,39 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import type { InteractiveContent } from '@/lib/types/stage';
+import { isWidgetMessage } from '@/lib/types/widgets';
+import { useWidgetIframeStore } from '@/lib/store/widget-iframe';
+import { playerBridge } from '@/lib/player-bridge';
 
 interface InteractiveRendererProps {
   readonly content: InteractiveContent;
   readonly mode: 'autonomous' | 'playback';
   readonly sceneId: string;
+}
+
+/**
+ * Phase 7.3a feature flag for the Code widget. Defaults OFF — until the
+ * flag is set, widget-typed scenes fall back to the legacy HTML-only
+ * sandbox path with no postMessage bridge attached.
+ *
+ * NEXT_PUBLIC_ prefix because the gate runs in the browser (the renderer
+ * decides whether to register the bridge before mounting the iframe).
+ */
+const CODE_WIDGET_ENABLED =
+  (process.env.NEXT_PUBLIC_INTERACTIVE_WIDGET_CODE_ENABLED ?? '').toLowerCase() === 'true';
+
+/**
+ * Returns true if this scene should run with the Deep Interactive widget
+ * runtime (per-scene postMessage bridge + relaxed sandbox decisions).
+ *
+ * Currently only `code` is implemented (Phase 7.3a). 7.3b–e will widen
+ * this predicate behind their own flags.
+ */
+function isWidgetEnabled(content: InteractiveContent): boolean {
+  if (!content.widgetType) return false;
+  if (content.widgetType === 'code') return CODE_WIDGET_ENABLED;
+  return false;
 }
 
 // LLM-generated HTML runs in restricted iframe to prevent cookie theft / outbound network calls.
@@ -17,19 +44,88 @@ interface InteractiveRendererProps {
 // In addition, a restrictive CSP is injected into the srcdoc <head> (connect-src 'none',
 // frame-src 'none', object-src 'none') and embedding tags (<iframe>/<object>/<embed>/<applet>)
 // are stripped from the model output before injection.
+//
+// Widget mode (Phase 7.3a, code widget): the iframe still runs under the same
+// hardened sandbox + CSP. The only difference is that a per-scene postMessage
+// bridge is attached so the player can drive TeacherActions inside the widget,
+// and the widget can report `widget:complete`/`widget:code:result` back. Widget
+// → parent traffic is forwarded through `playerBridge` so embedded osvaivai
+// receives lesson:end / quiz:answer events as usual.
+// See `/home/operator1/projects/osvaivai/docs/widget-sandbox.md` for the full
+// contract.
 export function InteractiveRenderer({ content, mode: _mode, sceneId }: InteractiveRendererProps) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const widgetEnabled = isWidgetEnabled(content);
+
+  const registerIframe = useWidgetIframeStore((state) => state.registerIframe);
+  const setActiveScene = useWidgetIframeStore((state) => state.setActiveScene);
+
   const patchedHtml = useMemo(
     () => (content.html ? patchHtmlForIframe(content.html) : undefined),
     [content.html],
   );
 
+  // Player → widget: scene-keyed postMessage callback
+  const sendMessageToIframe = useCallback((type: string, payload: Record<string, unknown>) => {
+    if (!iframeRef.current?.contentWindow) return;
+    iframeRef.current.contentWindow.postMessage(
+      { source: 'openmaic-player', type, ...payload },
+      // Widget iframe is sandboxed to a null origin → '*' is the only
+      // value that reaches it. Sandbox + CSP enforce isolation; postMessage
+      // targetOrigin cannot.
+      '*',
+    );
+  }, []);
+
+  // Register/unregister with the widget store. Only when the widget flag
+  // is on — otherwise we keep the store empty so legacy interactive HTML
+  // is not affected.
+  useEffect(() => {
+    if (!widgetEnabled) return undefined;
+    registerIframe(sceneId, sendMessageToIframe);
+    setActiveScene(sceneId);
+    return () => {
+      registerIframe(sceneId, null);
+    };
+  }, [widgetEnabled, sceneId, registerIframe, sendMessageToIframe, setActiveScene]);
+
+  // Widget → player: listen for widget messages and forward relevant ones
+  // to embedded osvaivai through the existing playerBridge channel.
+  useEffect(() => {
+    if (!widgetEnabled) return undefined;
+    const handler = (event: MessageEvent) => {
+      // Defence-in-depth: only accept messages whose source is *this* iframe.
+      if (event.source !== iframeRef.current?.contentWindow) return;
+      if (!isWidgetMessage(event.data)) return;
+      const msg = event.data;
+      if (msg.type === 'widget:complete') {
+        // Treat widget completion as scene completion for embedding purposes.
+        // The full lesson:end is still emitted by the playback engine when
+        // the lesson actually ends; widget:complete is a per-scene signal
+        // that we surface so the parent can react (analytics, advance, etc.).
+        playerBridge.sceneChanged(0, sceneId, 0);
+      }
+      // widget:code:result, widget:state-change etc. — currently consumed
+      // only by future ActionEngine integrations; intentionally not bridged
+      // outside the iframe to avoid leaking widget internals to parent frames.
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, [widgetEnabled, sceneId]);
+
   return (
     <div className="w-full h-full relative">
       <iframe
+        ref={iframeRef}
         srcDoc={patchedHtml}
         src={patchedHtml ? undefined : content.url}
         className="absolute inset-0 w-full h-full border-0"
         title={`Interactive Scene ${sceneId}`}
+        // SANDBOX CONTRACT (Phase 7.3a): unchanged from baseline. We do
+        // NOT add allow-same-origin even for widget mode — widgets must
+        // run as null-origin documents. Pyodide/Babel CDNs are loaded
+        // through the existing CSP allowlist and work fine without
+        // same-origin (they cache in IndexedDB scoped to the null origin).
         sandbox="allow-scripts"
       />
     </div>
