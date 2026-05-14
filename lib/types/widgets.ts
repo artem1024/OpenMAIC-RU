@@ -3,14 +3,19 @@
  *
  * Phase 7.3a (Code widget) — baseline. Phase 7.3b adds DiagramConfig.
  * Phase 7.3c adds SimulationConfig. Phase 7.3d adds Visualization3DConfig
- * (Three.js / WebGL). Each widget type sits behind its own per-widget
- * feature flag (`INTERACTIVE_WIDGET_*_ENABLED`); flag-off types fall back
- * to the legacy HTML-only sandbox path with no postMessage bridge attached.
- * Subsequent subphases (7.3e) will replace remaining stubs with full configs.
+ * (Three.js / WebGL). Phase 7.3e adds GameConfig (quizzes/puzzles/strategy/
+ * card games — pure HTML+JS, no extra CDN). Each widget type sits behind
+ * its own per-widget feature flag (`INTERACTIVE_WIDGET_*_ENABLED`); flag-
+ * off types fall back to the legacy HTML-only sandbox path with no
+ * postMessage bridge attached.
+ *
+ * Phase 7.3 cascade (5/5) is now complete — `WidgetConfig` is a fully-
+ * typed discriminated union over all upstream widget types with no
+ * remaining stubs.
  *
  * Adapted from upstream commit c02a607 ("feat: interactive mode clean
  * (#461)"). RU-fork keeps the same type names so future cherry-picks
- * for 7.3e can land with minimal renames.
+ * land with minimal renames.
  */
 
 // ==================== Base Types ====================
@@ -327,24 +332,91 @@ export interface Visualization3DConfig {
   teacherActions?: TeacherAction[];
 }
 
-// ==================== Stub configs for 7.3e ====================
-// Type-only declarations so that the discriminated union compiles. The
-// generation pipeline does NOT emit these in 7.3a/b/c/d — see subsequent
-// subphases. Each will be replaced with the upstream definition when
-// its widget lands.
+// ==================== Game Widget (Phase 7.3e) ====================
 
-export interface GameConfigStub {
-  type: 'game';
-  [key: string]: unknown;
+/**
+ * GameQuestion — a single quiz/decision question inside a game widget.
+ *
+ * `type: 'single'` — exactly one correct option (radio); `correct` is the
+ * 0-based index into `options`.
+ * `type: 'multiple'` — zero-or-more correct options (checkbox); `correct`
+ * is an array of indices.
+ *
+ * `points` overrides the per-game default `scoring.correctPoints` for
+ * harder/easier questions. `explanation` is shown after the user answers
+ * (correct or not) — the upstream prompt template treats this as a
+ * teaching reward, not punishment, in line with the "fun-first" posture.
+ */
+export interface GameQuestion {
+  id: string;
+  question: string;
+  type: 'single' | 'multiple';
+  options: string[];
+  correct: number | number[];
+  explanation?: string;
+  points?: number;
 }
 
-/** Discriminated union over all widget configs. */
+/**
+ * GameConfig — declarative spec for the `game` widget.
+ *
+ * The widget is rendered as a self-contained HTML+JS document inside a
+ * sandboxed iframe (see `components/scene-renderers/interactive-renderer.tsx`).
+ * Unlike the visualization3d widget (7.3d) it does NOT pull any extra
+ * CDN — games are pure HTML+JS+Canvas/SVG with `requestAnimationFrame`
+ * loops, drag-and-drop, and (optionally) Tailwind utility classes that
+ * are already covered by the existing `cdn.tailwindcss.com` allowlist.
+ * The upstream prompt template (`lib/generation/prompts/templates/
+ * game-content/system.md` from c02a607) explicitly steers the model
+ * AWAY from heavy frameworks and toward custom CSS / native JS.
+ *
+ * `gameType` discriminates the rendering style — `quiz` (with
+ * `questions[]`), `puzzle` (drag-and-drop / sort), `strategy` (turn-based
+ * decisions), `card` (memory match / flip). The widget runtime maps
+ * each type onto its built-in mini-engine; the LLM-generated HTML is
+ * what actually drives the game loop.
+ *
+ * `scoring` is REQUIRED so that the player can always report a numeric
+ * score back to the action engine. `achievements[]` are optional badges
+ * unlocked by user-defined `condition` strings (interpreted by the
+ * widget's runtime, not by the parent app).
+ *
+ * Reports back to the player via:
+ *   - `widget:game:result` { score, achievements?, currentQuestionIndex?, ... }
+ *     (after each scoring event — answer / level-up / achievement unlock)
+ *   - `widget:state-change` generic widget-internal state sync
+ *   - `widget:complete`     when the user finishes all questions / levels
+ */
+export interface GameConfig {
+  type: 'game';
+  gameType: 'quiz' | 'puzzle' | 'strategy' | 'card';
+  description: string;
+  questions?: GameQuestion[];
+  scoring: {
+    correctPoints: number;
+    speedBonus?: number;
+    comboMultiplier?: number;
+    penalty?: number;
+  };
+  achievements?: Array<{
+    id: string;
+    name: string;
+    description: string;
+    icon: string;
+    condition: string;
+  }>;
+  teacherActions?: TeacherAction[];
+}
+
+// ==================== Discriminated union ====================
+
+/** Discriminated union over all widget configs. Phase 7.3 cascade complete (5/5). */
 export type WidgetConfig =
   | CodeConfig
   | DiagramConfig
   | SimulationConfig
   | Visualization3DConfig
-  | GameConfigStub;
+  | GameConfig;
 
 // ==================== postMessage protocol ====================
 
@@ -428,6 +500,37 @@ export type WidgetToPlayerMessage =
          * exploration without preset selection.
          */
         activePresetName?: string;
+      };
+    }
+  | {
+      source: 'openmaic-widget';
+      type: 'widget:game:result';
+      payload: {
+        /**
+         * Cumulative score at this moment (sum of `scoring.correctPoints`,
+         * `speedBonus`, `comboMultiplier`-multiplied increments, minus
+         * `penalty` for wrong answers — the widget runtime decides the
+         * exact formula; the player only consumes the final number).
+         */
+        score: number;
+        /**
+         * IDs of achievements unlocked so far (subset of
+         * `GameConfig.achievements[].id`). Omitted if the game has no
+         * achievements configured.
+         */
+        achievements?: string[];
+        /**
+         * 0-based index into `GameConfig.questions`. Present for
+         * quiz-style games; omitted for puzzle / strategy / card games
+         * that do not have a discrete question sequence.
+         */
+        currentQuestionIndex?: number;
+        /**
+         * Optional widget-defined snapshot (e.g. lives left, level
+         * number, combo counter). Shape is widget-defined — the player
+         * forwards it as-is to analytics without inspection.
+         */
+        state?: Record<string, unknown>;
       };
     }
   | { source: 'openmaic-widget'; type: 'widget:state-change'; state: Record<string, unknown> }
