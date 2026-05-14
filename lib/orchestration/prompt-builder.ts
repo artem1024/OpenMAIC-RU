@@ -8,6 +8,15 @@ import type { StatelessChatRequest } from '@/lib/types/chat';
 import type { AgentConfig } from '@/lib/orchestration/registry/types';
 import type { WhiteboardActionRecord, AgentTurnSummary } from './director-prompt';
 import { getActionDescriptions, getEffectiveActions } from './tool-schemas';
+import { buildWhiteboardConflicts } from './summarizers/whiteboard-conflicts';
+
+// Feature flag — geometric conflict detection for whiteboard.
+// Default: enabled. Set WHITEBOARD_CONFLICT_DETECTION=false (or 0) to disable.
+function isConflictDetectionEnabled(): boolean {
+  const v = process.env.WHITEBOARD_CONFLICT_DETECTION;
+  if (v === undefined || v === '') return true;
+  return v !== 'false' && v !== '0';
+}
 
 // ==================== Role Guidelines ====================
 
@@ -686,6 +695,12 @@ function buildStateContext(storeState: StatelessChatRequest['storeState']): stri
     lines.push(
       `Whiteboard (last of ${stage.whiteboard.length}, ${wbElements.length} elements):\n${summarizeElements(wbElements)}`,
     );
+    // Append computed geometry-conflict block (overlap/line-cross/canvas-clip).
+    // Empty string when there are no conflicts — safe to concatenate.
+    if (isConflictDetectionEnabled()) {
+      const conflictsText = buildWhiteboardConflicts(wbElements);
+      if (conflictsText) lines.push(conflictsText);
+    }
   }
 
   return lines.join('\n');
