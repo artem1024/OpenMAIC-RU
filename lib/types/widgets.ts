@@ -2,15 +2,15 @@
  * Widget configuration types for Deep Interactive Mode.
  *
  * Phase 7.3a (Code widget) — baseline. Phase 7.3b adds DiagramConfig.
- * Each widget type sits behind its own per-widget feature flag
- * (`INTERACTIVE_WIDGET_*_ENABLED`); flag-off types fall back to the
- * legacy HTML-only sandbox path with no postMessage bridge attached.
- * Subsequent subphases (7.3c–e) will replace remaining stubs with full
- * configs.
+ * Phase 7.3c adds SimulationConfig. Each widget type sits behind its
+ * own per-widget feature flag (`INTERACTIVE_WIDGET_*_ENABLED`); flag-off
+ * types fall back to the legacy HTML-only sandbox path with no
+ * postMessage bridge attached. Subsequent subphases (7.3d–e) will
+ * replace remaining stubs with full configs.
  *
  * Adapted from upstream commit c02a607 ("feat: interactive mode clean
  * (#461)"). RU-fork keeps the same type names so future cherry-picks
- * for 7.3c–e can land with minimal renames.
+ * for 7.3d–e can land with minimal renames.
  */
 
 // ==================== Base Types ====================
@@ -126,16 +126,78 @@ export interface DiagramConfig {
   teacherActions?: TeacherAction[];
 }
 
-// ==================== Stub configs for 7.3c–e ====================
+// ==================== Simulation Widget (Phase 7.3c) ====================
+
+/**
+ * SimulationVariable — a single tunable knob in an interactive simulation.
+ *
+ * Rendered as a labelled `<input type="range">` (slider) inside the
+ * sandboxed iframe. The widget runtime is responsible for clamping the
+ * value to `[min, max]`, honouring `step` (defaults to 1 for integer-
+ * looking ranges and 0.01 otherwise), and for echoing the current value
+ * back via `widget:simulation:result` after each user adjustment.
+ *
+ * `unit` is an optional display suffix (e.g. "°", "m/s", "kg") shown
+ * next to the value — purely cosmetic, not parsed by the runtime.
+ */
+export interface SimulationVariable {
+  name: string;
+  label: string;
+  min: number;
+  max: number;
+  default: number;
+  unit?: string;
+  step?: number;
+}
+
+/**
+ * SimulationConfig — declarative spec for the `simulation` widget.
+ *
+ * The widget is rendered as a self-contained HTML document with inline
+ * `<canvas>` / `<svg>` visualisation + variable sliders. Like the
+ * diagram widget (7.3b) it does NOT pull any extra CDN — the upstream
+ * prompt template (`lib/generation/prompts/templates/simulation-content/system.md`)
+ * instructs the model to draw with native Canvas 2D / SVG and ship a
+ * `<script type="application/json" id="widget-config">` block alongside
+ * the inline JS. The existing CSP allowlist (`cdn.tailwindcss.com` for
+ * mobile-safe layout utilities + `cdn.jsdelivr.net` for KaTeX math
+ * formulas inside descriptions) is therefore sufficient — see
+ * widget-sandbox.md.
+ *
+ * Reports back to the player via:
+ *   - `widget:simulation:result` { variables, activePresetName? }
+ *     (after every slider change OR explicit preset apply)
+ *   - `widget:state-change`      generic widget-internal state sync
+ *   - `widget:complete`          when the user has explored all presets
+ *
+ * Player → widget messages reuse the standard TeacherAction transport;
+ * the widget's own runtime maps `setState` to slider value updates
+ * (per the upstream simulation prompt's SET_WIDGET_STATE handler).
+ */
+export interface SimulationConfig {
+  type: 'simulation';
+  /** Short slug describing the modelled concept (e.g. `projectile_motion`). */
+  concept: string;
+  description: string;
+  variables: SimulationVariable[];
+  /**
+   * Pre-canned variable assignments shown as one-tap chips above the
+   * sliders. Useful for guided exploration ("Hit the target", "Free
+   * fall", etc.). Names should be human-readable; key set must be a
+   * subset of `variables[].name`.
+   */
+  presets?: Array<{
+    name: string;
+    variables: Record<string, number>;
+  }>;
+  teacherActions?: TeacherAction[];
+}
+
+// ==================== Stub configs for 7.3d–e ====================
 // Type-only declarations so that the discriminated union compiles. The
-// generation pipeline does NOT emit these in 7.3a/b — see subsequent
+// generation pipeline does NOT emit these in 7.3a/b/c — see subsequent
 // subphases. Each will be replaced with the upstream definition when
 // its widget lands.
-
-export interface SimulationConfigStub {
-  type: 'simulation';
-  [key: string]: unknown;
-}
 
 export interface Visualization3DConfigStub {
   type: 'visualization3d';
@@ -151,7 +213,7 @@ export interface GameConfigStub {
 export type WidgetConfig =
   | CodeConfig
   | DiagramConfig
-  | SimulationConfigStub
+  | SimulationConfig
   | Visualization3DConfigStub
   | GameConfigStub;
 
@@ -189,6 +251,24 @@ export type WidgetToPlayerMessage =
         currentStep: number;
         /** Optional: id of the node the user just clicked. */
         focusedNodeId?: string;
+      };
+    }
+  | {
+      source: 'openmaic-widget';
+      type: 'widget:simulation:result';
+      payload: {
+        /**
+         * Snapshot of all variable values at this moment. Keys correspond
+         * to `SimulationVariable.name`; values are clamped numbers as
+         * displayed on the sliders.
+         */
+        variables: Record<string, number>;
+        /**
+         * Name of the preset the user just applied (matches
+         * `SimulationConfig.presets[].name`). Omitted when the user
+         * tweaked a slider directly without selecting a preset.
+         */
+        activePresetName?: string;
       };
     }
   | { source: 'openmaic-widget'; type: 'widget:state-change'; state: Record<string, unknown> }
