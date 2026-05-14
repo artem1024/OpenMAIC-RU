@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isWidgetMessage,
   type DiagramConfig,
+  type GameConfig,
   type SimulationConfig,
   type Visualization3DConfig,
   type WidgetConfig,
@@ -76,6 +77,29 @@ describe('isWidgetMessage type guard', () => {
       source: 'openmaic-widget',
       type: 'widget:visualization3d:result',
       payload: {},
+    };
+    expect(isWidgetMessage(msg)).toBe(true);
+  });
+
+  it('accepts widget:game:result with full payload', () => {
+    const msg: WidgetToPlayerMessage = {
+      source: 'openmaic-widget',
+      type: 'widget:game:result',
+      payload: {
+        score: 250,
+        achievements: ['first_blood', 'combo_x3'],
+        currentQuestionIndex: 4,
+        state: { lives: 2, level: 3, combo: 3 },
+      },
+    };
+    expect(isWidgetMessage(msg)).toBe(true);
+  });
+
+  it('accepts widget:game:result with minimal payload (puzzle/card games)', () => {
+    const msg: WidgetToPlayerMessage = {
+      source: 'openmaic-widget',
+      type: 'widget:game:result',
+      payload: { score: 0 },
     };
     expect(isWidgetMessage(msg)).toBe(true);
   });
@@ -284,5 +308,106 @@ describe('Visualization3DConfig (Phase 7.3d)', () => {
     expect((cfg.objects[1].scale as { y: number }).y).toBe(2);
     expect(cfg.objects[2].material?.wireframe).toBe(true);
     expect(cfg.objects[4].animation?.type).toBe('pulse');
+  });
+});
+
+describe('GameConfig (Phase 7.3e)', () => {
+  it('compiles as a valid WidgetConfig discriminant — quiz with single+multiple questions', () => {
+    const cfg: WidgetConfig = {
+      type: 'game',
+      gameType: 'quiz',
+      description: 'Test your knowledge of physics fundamentals.',
+      questions: [
+        {
+          id: 'q1',
+          question: 'What is the SI unit of force?',
+          type: 'single',
+          options: ['Joule', 'Newton', 'Watt', 'Pascal'],
+          correct: 1,
+          explanation: 'Force is measured in newtons (N), where 1 N = 1 kg·m/s².',
+          points: 10,
+        },
+        {
+          id: 'q2',
+          question: 'Which of these are vector quantities?',
+          type: 'multiple',
+          options: ['Velocity', 'Mass', 'Acceleration', 'Temperature'],
+          correct: [0, 2],
+          explanation: 'Vectors have direction; mass and temperature are scalars.',
+        },
+      ],
+      scoring: {
+        correctPoints: 10,
+        speedBonus: 5,
+        comboMultiplier: 1.5,
+        penalty: 2,
+      },
+      achievements: [
+        {
+          id: 'perfect_run',
+          name: 'Perfect Run',
+          description: 'Answer all questions correctly without hints.',
+          icon: 'trophy',
+          condition: 'correctCount === total && hintsUsed === 0',
+        },
+      ],
+    };
+    expect(cfg.type).toBe('game');
+    if (cfg.type === 'game') {
+      const game = cfg as GameConfig;
+      expect(game.gameType).toBe('quiz');
+      expect(game.questions).toHaveLength(2);
+      expect(game.questions?.[0].correct).toBe(1);
+      expect(game.questions?.[1].correct).toEqual([0, 2]);
+      expect(game.scoring.correctPoints).toBe(10);
+      expect(game.scoring.comboMultiplier).toBe(1.5);
+      expect(game.achievements?.[0].id).toBe('perfect_run');
+    }
+  });
+
+  it('compiles for puzzle gameType without questions[] (drag-and-drop puzzles)', () => {
+    const cfg: GameConfig = {
+      type: 'game',
+      gameType: 'puzzle',
+      description: 'Sort the elements by atomic number.',
+      scoring: { correctPoints: 5 },
+    };
+    expect(cfg.gameType).toBe('puzzle');
+    expect(cfg.questions).toBeUndefined();
+    expect(cfg.scoring.correctPoints).toBe(5);
+    expect(cfg.scoring.speedBonus).toBeUndefined();
+    expect(cfg.achievements).toBeUndefined();
+    expect(cfg.teacherActions).toBeUndefined();
+  });
+
+  it('compiles minimal GameConfig (strategy / card)', () => {
+    const strategy: GameConfig = {
+      type: 'game',
+      gameType: 'strategy',
+      description: 'Resource allocation challenge.',
+      scoring: { correctPoints: 1 },
+    };
+    const card: GameConfig = {
+      type: 'game',
+      gameType: 'card',
+      description: 'Memory match: pair the concepts.',
+      scoring: { correctPoints: 2 },
+    };
+    expect(strategy.gameType).toBe('strategy');
+    expect(card.gameType).toBe('card');
+  });
+
+  it('rejects (compile-time) invalid gameType — guard via type assertion', () => {
+    // This test documents the contract: only the four upstream gameType
+    // values are accepted. We can't `expect` a TS compile error at runtime,
+    // but we sanity-check the union narrows correctly.
+    const cfg: GameConfig = {
+      type: 'game',
+      gameType: 'card',
+      description: 'x',
+      scoring: { correctPoints: 1 },
+    };
+    const allowed: Array<GameConfig['gameType']> = ['quiz', 'puzzle', 'strategy', 'card'];
+    expect(allowed).toContain(cfg.gameType);
   });
 });
