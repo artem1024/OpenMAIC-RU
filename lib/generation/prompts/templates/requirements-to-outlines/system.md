@@ -78,75 +78,42 @@ When comparing or listing information, specify in keyPoints:
 ]
 ```
 
+{{#if hasSourceImages}}
 ### Image Usage
 
 - If images are provided (suggestedImageIds), match image descriptions to scene themes
 - Each slide scene can use 0-3 images
 - Images can be reused across scenes
 - Quiz scenes typically don't need images
+{{/if}}
 
+{{#if mediaEnabled}}
 ### AI-Generated Media
 
-When a slide scene needs an image or video but no suitable PDF image exists, mark it for AI generation:
-
-- Add a `mediaGenerations` array to the scene outline
-- Each entry specifies: `type` ("image" or "video"), `prompt` (description for the generation model), `elementId` (unique placeholder), and optionally `aspectRatio` (default "16:9") and `style`
-- **Image IDs**: use `"gen_img_1"`, `"gen_img_2"`, etc. — IDs are **globally unique across the entire course**, NOT reset per scene
-- **Video IDs**: use `"gen_vid_1"`, `"gen_vid_2"`, etc. — same global numbering rule
-- The prompt should describe the desired media clearly and specifically
-- **Language in images**: If the image contains text, labels, or annotations, the prompt MUST explicitly specify that all text in the image should be in the course language (e.g., "all labels in Chinese" for zh-CN courses, "all labels in English" for en-US courses). For purely visual images without text, language does not matter.
-- **⚠️ NO TEXT IN VIDEO — HARD RULE**: Video prompts MUST NOT request any on-screen text, labels, captions, titles, annotations, or written words in ANY language. Text-to-video models (Veo and others) render text as unreadable, garbled gibberish — and Cyrillic / non-Latin scripts come out especially broken (e.g. "Hidden" becomes "Hidond", "Output" becomes "Objuct"). ALWAYS:
-  - Describe videos as purely visual/animated: motion, shapes, colors, flows, transitions.
-  - Explicitly add `"no text, no letters, no labels, no captions, no words"` to the end of every video prompt.
-  - If a concept needs labels (layer names, formulas, terms), put them in a SEPARATE text element on the slide — not inside the video.
-  - Bad example: `"animation of a neural network with input, hidden, and output layers labeled"` ❌
-  - Good example: `"smooth animation of a neural network with glowing nodes pulsing and signals flowing left to right across connecting lines, abstract educational style, no text, no letters, no labels"` ✅
-- Only request media generation when it genuinely enhances the content — not every slide needs an image or video
-- Video generation is slow (1-2 minutes each), so only request videos when motion genuinely enhances understanding
-- If a suitable PDF image exists, prefer using `suggestedImageIds` instead
-- **Avoid duplicate media across slides**: Each generated image/video must be visually distinct. Do NOT request near-identical media for different slides (e.g., two "diagram of cell structure" images). If multiple slides cover the same topic, vary the visual angle, scope, or style
-- **Cross-scene reuse**: To reuse a generated image/video in a different scene, reference the same `elementId` in the later scene's content WITHOUT adding a new `mediaGenerations` entry. Only the scene that first defines the `elementId` in its `mediaGenerations` should include the generation request — later scenes just reference the ID. For example, if scene 1 defines `gen_img_1`, scene 3 can also use `gen_img_1` as an image src without declaring it again in mediaGenerations
-
-**Content safety guidelines for media prompts** (to avoid being blocked by the generation model's safety filter):
-
-- Do NOT describe specific human facial features, body details, or physical appearance — use abstract or iconographic representations (e.g., "a silhouette of a person" instead of detailed descriptions)
-- Do NOT include violence, weapons, blood, or gore
-- Do NOT reference politically sensitive content: national flags, military imagery, or real political figures
-- Do NOT depict real public figures or celebrities by name or likeness
-- Prefer abstract, diagrammatic, infographic, or icon-based styles for educational illustrations
-- Keep all prompts academic and education-oriented in tone
+When a slide scene needs an image or video but no suitable source image exists, mark it for AI generation by adding a `mediaGenerations` array to the scene outline.
 
 **When to use video vs image**:
 
 - Use **video** for content that benefits from motion/animation: physical processes, step-by-step demonstrations, biological movements, chemical reactions, mechanical operations
 - Use **image** for static content: diagrams, charts, illustrations, portraits, landscapes
 - Video generation takes 1-2 minutes, so use it sparingly and only when motion is essential
+{{/if}}
 
-Image example:
+{{#if imageEnabled}}
+{{snippet:image-instructions}}
+{{/if}}
 
-```json
-"mediaGenerations": [
-  {
-    "type": "image",
-    "prompt": "A colorful diagram showing the water cycle with evaporation, condensation, and precipitation arrows",
-    "elementId": "gen_img_1",
-    "aspectRatio": "16:9"
-  }
-]
-```
+{{#if videoEnabled}}
+{{snippet:video-instructions}}
+{{/if}}
 
-Video example:
+{{#if mediaEnabled}}
+{{snippet:media-safety-guidelines}}
+{{/if}}
 
-```json
-"mediaGenerations": [
-  {
-    "type": "video",
-    "prompt": "A smooth animation showing water molecules evaporating from the ocean surface, rising into the atmosphere, and forming clouds, abstract educational style, no text, no letters, no labels, no captions, no words",
-    "elementId": "gen_vid_1",
-    "aspectRatio": "16:9"
-  }
-]
-```
+{{#if mediaPolicyMessage}}
+{{mediaPolicyMessage}}
+{{/if}}
 
 ### Interactive Scene Guidelines
 
@@ -251,8 +218,12 @@ You must output a JSON array where each element is a scene outline object:
 | teachingObjective | string                   | ❌       | Corresponding learning objective                                                                 |
 | estimatedDuration | number                   | ❌       | Estimated duration (seconds)                                                                     |
 | order             | number                   | ✅       | Sort order, starting from 1                                                                      |
+{{#if hasSourceImages}}
 | suggestedImageIds | string[]                 | ❌       | Suggested image IDs to use                                                                       |
-| mediaGenerations  | MediaGenerationRequest[] | ❌       | AI image/video generation requests when PDF images insufficient                                  |
+{{/if}}
+{{#if mediaEnabled}}
+| mediaGenerations  | MediaGenerationRequest[] | ❌       | AI-generated media requests when generated media would enhance a slide scene                     |
+{{/if}}
 | quizConfig        | object                   | ❌       | Required for quiz type, contains questionCount/difficulty/questionTypes                          |
 | interactiveConfig | object                   | ❌       | Required for interactive type, contains conceptName/conceptOverview/designIdea/subject           |
 | pblConfig         | object                   | ❌       | Required for pbl type, contains projectTopic/projectDescription/targetSkills/issueCount/language |
@@ -303,7 +274,9 @@ You must output a JSON array where each element is a scene outline object:
 5a. **Content density per slide scene**: every `slide` scene must carry at least **4 keyPoints** and up to 7. A slide with 1-3 keyPoints is too shallow — either merge it with a neighbor or flesh it out with definitions, examples, contrasts, or concrete data. `keyPoints` are the backbone that downstream stages expand into actual slide copy, so being stingy here directly produces empty-looking slides.
 6. Insert quizzes at appropriate points for knowledge checks
 7. Use interactive scenes sparingly (max {{maxInteractive}} per lesson) and only when the concept truly benefits from hands-on interaction
-7a. Use generated videos sparingly (max {{maxVideos}} per lesson) and only when motion is essential for understanding. If video generation is disabled by the caller, do not request videos at all.
+{{#if videoEnabled}}
+7a. Use generated videos sparingly (max {{maxVideos}} per lesson) and only when motion is essential for understanding.
+{{/if}}
 8. **Language Requirement**: Strictly output all content in the language specified by the user
 9. Regardless of information completeness, always output conforming JSON - do not ask questions or request more information
 10. **No teacher identity on slides**: Scene titles and keyPoints must be neutral and topic-focused. Never include the teacher's name or role (e.g., avoid "Teacher Wang's Tips", "Teacher's Wishes"). Use generic labels like "Tips", "Summary", "Key Takeaways" instead.

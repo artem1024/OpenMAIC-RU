@@ -79,19 +79,26 @@ export async function generateSceneOutlinesFromRequirements(
       ? `## Student Profile\n\nStudent: ${requirements.userNickname || 'Unknown'}${requirements.userBio ? ` — ${requirements.userBio}` : ''}\n\nConsider this student's background when designing the course. Adapt difficulty, examples, and teaching approach accordingly.\n\n---`
       : '';
 
-  // Build media generation policy based on enabled flags
+  // Build media snippet conditions based on enabled flags. The conditional
+  // {{#if imageEnabled/videoEnabled/mediaEnabled/hasSourceImages}} blocks in
+  // requirements-to-outlines/system.md gate which media instructions reach the
+  // model — this replaces the old negative-override "mediaGenerationPolicy"
+  // string with positive conditional includes (PR #490).
+  //
+  // mediaPolicyMessage is kept as an explicit override channel for the rare
+  // mixed cases where the caller wants to forbid one type but allow the other;
+  // most callers leave it empty and rely on the {{#if}} blocks.
   const imageEnabled = options?.imageGenerationEnabled ?? false;
   const videoEnabled = options?.videoGenerationEnabled ?? false;
-  let mediaGenerationPolicy = '';
-  if (!imageEnabled && !videoEnabled) {
-    mediaGenerationPolicy =
-      '**IMPORTANT: Do NOT include any mediaGenerations in the outlines. Both image and video generation are disabled.**';
-  } else if (!imageEnabled) {
-    mediaGenerationPolicy =
-      '**IMPORTANT: Do NOT include any image mediaGenerations (type: "image") in the outlines. Image generation is disabled. Video generation is allowed.**';
-  } else if (!videoEnabled) {
-    mediaGenerationPolicy =
+  const mediaEnabled = imageEnabled || videoEnabled;
+  const hasSourceImages = (pdfImages?.length ?? 0) > 0;
+  let mediaPolicyMessage = '';
+  if (imageEnabled && !videoEnabled) {
+    mediaPolicyMessage =
       '**IMPORTANT: Do NOT include any video mediaGenerations (type: "video") in the outlines. Video generation is disabled. Image generation is allowed.**';
+  } else if (!imageEnabled && videoEnabled) {
+    mediaPolicyMessage =
+      '**IMPORTANT: Do NOT include any image mediaGenerations (type: "image") in the outlines. Image generation is disabled. Video generation is allowed.**';
   }
 
   // Use simplified prompt variables
@@ -106,7 +113,13 @@ export async function generateSceneOutlinesFromRequirements(
         : 'None',
     availableImages: availableImagesText,
     userProfile: userProfileText,
-    mediaGenerationPolicy,
+    // Conditional-block flags consumed by {{#if}} in the template:
+    imageEnabled,
+    videoEnabled,
+    mediaEnabled,
+    hasSourceImages,
+    // Optional explicit override message (for asymmetric image-only/video-only modes):
+    mediaPolicyMessage,
     researchContext:
       options?.researchContext || (requirements.language === 'zh-CN' ? '无' : 'None'),
     // Server-side generation populates this via options; client-side populates via formatTeacherPersonaForPrompt

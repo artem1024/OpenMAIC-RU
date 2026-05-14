@@ -572,14 +572,27 @@ async function generateSlideContent(
     }
   }
 
+  // Compute conditional-block flags consumed by {{#if}} in slide-content/system.md.
+  // imageElementEnabled: this slide has any image source (assigned PDF image or generated image)
+  // generatedImageEnabled / generatedVideoEnabled: outline declared a corresponding gen_*_N entry
+  // mediaElementEnabled / mediaElementDisabled: convenience flags for the pre-output checklist
+  const generatedImageEntries =
+    outline.mediaGenerations?.filter((mg) => mg.type === 'image') ?? [];
+  const generatedVideoEntries =
+    outline.mediaGenerations?.filter((mg) => mg.type === 'video') ?? [];
+  const hasAssignedImages = (assignedImages?.length ?? 0) > 0;
+  const generatedImageEnabled = generatedImageEntries.length > 0;
+  const generatedVideoEnabled = generatedVideoEntries.length > 0;
+  const imageElementEnabled = hasAssignedImages || generatedImageEnabled;
+  const mediaElementEnabled = imageElementEnabled || generatedVideoEnabled;
+  const mediaElementDisabled = !mediaElementEnabled;
+
   // Add generated media placeholders info (images + videos)
   if (outline.mediaGenerations && outline.mediaGenerations.length > 0) {
-    const genImgDescs = outline.mediaGenerations
-      .filter((mg) => mg.type === 'image')
+    const genImgDescs = generatedImageEntries
       .map((mg) => `- ${mg.elementId}: "${mg.prompt}" (aspect ratio: ${mg.aspectRatio || '16:9'})`)
       .join('\n');
-    const genVidDescs = outline.mediaGenerations
-      .filter((mg) => mg.type === 'video')
+    const genVidDescs = generatedVideoEntries
       .map((mg) => `- ${mg.elementId}: "${mg.prompt}" (aspect ratio: ${mg.aspectRatio || '16:9'})`)
       .join('\n');
 
@@ -619,6 +632,12 @@ async function generateSlideContent(
     canvas_height: canvasHeight,
     teacherContext,
     layoutHint: options?.layoutHint ?? '',
+    // Conditional-block flags consumed by {{#if}} in slide-content/system.md:
+    imageElementEnabled,
+    generatedImageEnabled,
+    generatedVideoEnabled,
+    mediaElementEnabled,
+    mediaElementDisabled,
   });
 
   if (!prompts) {

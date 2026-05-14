@@ -20,7 +20,18 @@ export type PromptId =
 /**
  * Snippet identifier
  */
-export type SnippetId = 'json-output-rules' | 'element-types' | 'action-types' | 'tts-speech-guidelines';
+export type SnippetId =
+  | 'json-output-rules'
+  | 'element-types'
+  | 'action-types'
+  | 'tts-speech-guidelines'
+  // Media instruction snippets (PR #490 — conditional via {{#if imageEnabled/videoEnabled/...}})
+  | 'image-instructions'
+  | 'video-instructions'
+  | 'media-safety-guidelines'
+  | 'slide-image-instructions'
+  | 'slide-generated-image-instructions'
+  | 'slide-video-instructions';
 
 /**
  * Loaded prompt template
