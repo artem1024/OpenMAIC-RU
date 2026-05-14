@@ -8,7 +8,8 @@ import { persist } from 'zustand/middleware';
 import type { ProviderId } from '@/lib/ai/providers';
 import type { ProvidersConfig } from '@/lib/types/settings';
 import { PROVIDERS } from '@/lib/ai/providers';
-import type { TTSProviderId, ASRProviderId } from '@/lib/audio/types';
+import type { TTSProviderId, ASRProviderId, BuiltInTTSProviderId } from '@/lib/audio/types';
+import { isCustomTTSProvider, isCustomASRProvider } from '@/lib/audio/types';
 import { ASR_PROVIDERS, DEFAULT_TTS_VOICES, TTS_PROVIDERS } from '@/lib/audio/constants';
 import { PDF_PROVIDERS } from '@/lib/pdf/constants';
 import type { PDFProviderId } from '@/lib/pdf/types';
@@ -52,6 +53,15 @@ export interface SettingsState {
       enabled: boolean;
       isServerConfigured?: boolean;
       serverBaseUrl?: string;
+      modelId?: string;
+      // Custom provider fields
+      customName?: string;
+      customDefaultBaseUrl?: string;
+      customVoices?: Array<{ id: string; name: string }>;
+      customModels?: Array<{ id: string; name: string }>;
+      isBuiltIn?: boolean;
+      requiresApiKey?: boolean;
+      providerOptions?: Record<string, unknown>;
     }
   >;
 
@@ -63,6 +73,14 @@ export interface SettingsState {
       enabled: boolean;
       isServerConfigured?: boolean;
       serverBaseUrl?: string;
+      modelId?: string;
+      // Custom provider fields
+      customName?: string;
+      customDefaultBaseUrl?: string;
+      customModels?: Array<{ id: string; name: string }>;
+      isBuiltIn?: boolean;
+      requiresApiKey?: boolean;
+      providerOptions?: Record<string, unknown>;
     }
   >;
 
@@ -177,14 +195,46 @@ export interface SettingsState {
   setASRLanguage: (language: string) => void;
   setTTSProviderConfig: (
     providerId: TTSProviderId,
-    config: Partial<{ apiKey: string; baseUrl: string; enabled: boolean }>,
+    config: Partial<{
+      apiKey: string;
+      baseUrl: string;
+      enabled: boolean;
+      modelId: string;
+      customModels: Array<{ id: string; name: string }>;
+      customVoices: Array<{ id: string; name: string }>;
+      providerOptions: Record<string, unknown>;
+    }>,
   ) => void;
   setASRProviderConfig: (
     providerId: ASRProviderId,
-    config: Partial<{ apiKey: string; baseUrl: string; enabled: boolean }>,
+    config: Partial<{
+      apiKey: string;
+      baseUrl: string;
+      enabled: boolean;
+      modelId: string;
+      customModels: Array<{ id: string; name: string }>;
+      providerOptions: Record<string, unknown>;
+    }>,
   ) => void;
   setTTSEnabled: (enabled: boolean) => void;
   setASREnabled: (enabled: boolean) => void;
+
+  // Custom audio provider actions
+  addCustomTTSProvider: (
+    id: TTSProviderId,
+    name: string,
+    baseUrl: string,
+    requiresApiKey: boolean,
+    defaultModel?: string,
+  ) => void;
+  removeCustomTTSProvider: (id: TTSProviderId) => void;
+  addCustomASRProvider: (
+    id: ASRProviderId,
+    name: string,
+    baseUrl: string,
+    requiresApiKey: boolean,
+  ) => void;
+  removeCustomASRProvider: (id: ASRProviderId) => void;
 
   // PDF actions
   setPDFProvider: (providerId: PDFProviderId) => void;
@@ -354,11 +404,27 @@ function ensureValidProviderSelections(state: Partial<SettingsState>): void {
     state.videoProviderId = defaultVideoConfig.videoProviderId;
   }
 
-  if (!hasProviderId(TTS_PROVIDERS, state.ttsProviderId)) {
+  if (
+    !hasProviderId(TTS_PROVIDERS, state.ttsProviderId) &&
+    !(
+      state.ttsProviderId &&
+      isCustomTTSProvider(state.ttsProviderId) &&
+      state.ttsProvidersConfig &&
+      state.ttsProviderId in state.ttsProvidersConfig
+    )
+  ) {
     state.ttsProviderId = defaultAudioConfig.ttsProviderId;
   }
 
-  if (!hasProviderId(ASR_PROVIDERS, state.asrProviderId)) {
+  if (
+    !hasProviderId(ASR_PROVIDERS, state.asrProviderId) &&
+    !(
+      state.asrProviderId &&
+      isCustomASRProvider(state.asrProviderId) &&
+      state.asrProvidersConfig &&
+      state.asrProviderId in state.asrProvidersConfig
+    )
+  ) {
     state.asrProviderId = defaultAudioConfig.asrProviderId;
   }
 }
@@ -598,9 +664,12 @@ export const useSettingsStore = create<SettingsState>()(
           set((state) => {
             // If switching provider, set default voice for that provider
             const shouldUpdateVoice = state.ttsProviderId !== providerId;
+            const defaultVoice = isCustomTTSProvider(providerId)
+              ? state.ttsProvidersConfig[providerId]?.customVoices?.[0]?.id || 'default'
+              : DEFAULT_TTS_VOICES[providerId as BuiltInTTSProviderId] || 'default';
             return {
               ttsProviderId: providerId,
-              ...(shouldUpdateVoice && { ttsVoice: DEFAULT_TTS_VOICES[providerId] }),
+              ...(shouldUpdateVoice && { ttsVoice: defaultVoice }),
             };
           }),
 
@@ -612,7 +681,13 @@ export const useSettingsStore = create<SettingsState>()(
         // (e.g. browser-native uses BCP-47 "en-US", OpenAI Whisper uses ISO 639-1 "en")
         setASRProvider: (providerId) =>
           set((state) => {
-            const supportedLanguages = ASR_PROVIDERS[providerId]?.supportedLanguages || [];
+            let supportedLanguages: string[];
+            if (isCustomASRProvider(providerId)) {
+              supportedLanguages = ['auto'];
+            } else {
+              supportedLanguages =
+                ASR_PROVIDERS[providerId as keyof typeof ASR_PROVIDERS]?.supportedLanguages || [];
+            }
             const isLanguageValid = supportedLanguages.includes(state.asrLanguage);
             return {
               asrProviderId: providerId,
@@ -693,6 +768,71 @@ export const useSettingsStore = create<SettingsState>()(
         setVideoGenerationEnabled: (enabled) => set({ videoGenerationEnabled: enabled }),
         setTTSEnabled: (enabled) => set({ ttsEnabled: enabled }),
         setASREnabled: (enabled) => set({ asrEnabled: enabled }),
+
+        // Custom audio provider actions
+        addCustomTTSProvider: (id, name, baseUrl, requiresApiKey, defaultModel) =>
+          set((state) => ({
+            ttsProvidersConfig: {
+              ...state.ttsProvidersConfig,
+              [id]: {
+                apiKey: '',
+                baseUrl: '',
+                enabled: true,
+                modelId: defaultModel || '',
+                customName: name,
+                customDefaultBaseUrl: baseUrl,
+                customVoices: [],
+                isBuiltIn: false,
+                requiresApiKey,
+              },
+            },
+            ttsProviderId: id,
+          })),
+
+        removeCustomTTSProvider: (id) =>
+          set((state) => {
+            if (!isCustomTTSProvider(id)) return state;
+            const { [id]: _, ...rest } = state.ttsProvidersConfig;
+            return {
+              ttsProvidersConfig: rest as typeof state.ttsProvidersConfig,
+              ...(state.ttsProviderId === id && {
+                ttsProviderId: 'browser-native-tts' as TTSProviderId,
+                ttsVoice: 'default',
+              }),
+            };
+          }),
+
+        addCustomASRProvider: (id, name, baseUrl, requiresApiKey) =>
+          set((state) => ({
+            asrProvidersConfig: {
+              ...state.asrProvidersConfig,
+              [id]: {
+                apiKey: '',
+                baseUrl: '',
+                enabled: true,
+                modelId: '',
+                customModels: [],
+                customName: name,
+                customDefaultBaseUrl: baseUrl,
+                isBuiltIn: false,
+                requiresApiKey,
+              },
+            },
+            asrProviderId: id,
+          })),
+
+        removeCustomASRProvider: (id) =>
+          set((state) => {
+            if (!isCustomASRProvider(id)) return state;
+            const { [id]: _, ...rest } = state.asrProvidersConfig;
+            return {
+              asrProvidersConfig: rest as typeof state.asrProvidersConfig,
+              ...(state.asrProviderId === id && {
+                asrProviderId: 'browser-native' as ASRProviderId,
+                asrLanguage: 'zh',
+              }),
+            };
+          }),
 
         // Web Search actions
         setWebSearchProvider: (providerId) => set({ webSearchProviderId: providerId }),
@@ -920,7 +1060,8 @@ export const useSettingsStore = create<SettingsState>()(
                   !newTTSConfig[state.ttsProviderId]?.isServerConfigured
                 ) {
                   autoTtsProvider = serverTtsIds[0];
-                  autoTtsVoice = DEFAULT_TTS_VOICES[autoTtsProvider] || 'default';
+                  autoTtsVoice =
+                    DEFAULT_TTS_VOICES[autoTtsProvider as BuiltInTTSProviderId] || 'default';
                 }
 
                 // ASR: select first server provider if current is not server-configured
