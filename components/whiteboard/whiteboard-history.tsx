@@ -10,6 +10,7 @@ import { createStageAPI } from '@/lib/api/stage-api';
 import { elementFingerprint } from '@/lib/utils/element-fingerprint';
 import { toast } from 'sonner';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { interpolate, plural } from '@/lib/i18n';
 
 interface WhiteboardHistoryProps {
   readonly isOpen: boolean;
@@ -22,7 +23,7 @@ interface WhiteboardHistoryProps {
  * Clicking "Restore" replaces the current whiteboard content with the snapshot.
  */
 export function WhiteboardHistory({ isOpen, onClose }: WhiteboardHistoryProps) {
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
   const snapshots = useWhiteboardHistoryStore((s) => s.snapshots);
   const isClearing = useCanvasStore.use.whiteboardClearing();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -142,10 +143,22 @@ export function WhiteboardHistory({ isOpen, onClose }: WhiteboardHistoryProps) {
                         </div>
                         <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                           {formatTime(snap.timestamp)} ·{' '}
-                          {t('whiteboard.elementCount').replace(
-                            '{count}',
-                            String(snap.elements.length),
-                          )}
+                          {(() => {
+                            const count = snap.elements.length;
+                            // For ru-RU pick the right plural noun form so
+                            // counts read naturally: 1 элемент, 2 элемента,
+                            // 5 элементов. Other locales fall back to the
+                            // single template string verbatim.
+                            if (locale === 'ru-RU') {
+                              const noun = plural(count, [
+                                'элемент',
+                                'элемента',
+                                'элементов',
+                              ]);
+                              return `${count} ${noun}`;
+                            }
+                            return interpolate(t('whiteboard.elementCount'), { count });
+                          })()}
                         </div>
                       </div>
                       <button

@@ -6,6 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { AlertCircle, User, Users, Sparkles, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useI18n } from '@/lib/hooks/use-i18n';
+import { interpolate } from '@/lib/i18n';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 
 interface Agent {
@@ -159,10 +160,9 @@ export function AgentSettings({
                 <span className="flex items-center gap-1.5">
                   <Users className="h-4 w-4" />
                   <strong>{t('settings.multiAgentMode')}</strong> -{' '}
-                  {t('settings.agentsCollaboratingCount').replace(
-                    '{count}',
-                    String(selectedAgentIds.length),
-                  )}
+                  {interpolate(t('settings.agentsCollaboratingCount'), {
+                    count: selectedAgentIds.length,
+                  })}
                 </span>
               )}
             </div>
