@@ -50,6 +50,7 @@ export interface SettingsState {
     {
       apiKey: string;
       baseUrl: string;
+      model?: string;
       enabled: boolean;
       isServerConfigured?: boolean;
       serverBaseUrl?: string;
@@ -200,6 +201,7 @@ export interface SettingsState {
       baseUrl: string;
       enabled: boolean;
       modelId: string;
+      model?: string;
       customModels: Array<{ id: string; name: string }>;
       customVoices: Array<{ id: string; name: string }>;
       providerOptions: Record<string, unknown>;
@@ -318,12 +320,21 @@ const getDefaultAudioConfig = () => ({
     'qwen-tts': { apiKey: '', baseUrl: '', enabled: false },
     'edge-tts': { apiKey: '', baseUrl: '', enabled: true },
     'elevenlabs-tts': { apiKey: '', baseUrl: '', enabled: false },
+    'gemini-tts': { apiKey: '', baseUrl: '', enabled: false },
+    'minimax-tts': { apiKey: '', baseUrl: '', model: 'speech-2.8-turbo', enabled: false },
+    'lemonade-tts': {
+      apiKey: '',
+      baseUrl: '',
+      model: 'kokoro-v1',
+      enabled: false,
+    },
     'browser-native-tts': { apiKey: '', baseUrl: '', enabled: true },
-  } as Record<TTSProviderId, { apiKey: string; baseUrl: string; enabled: boolean }>,
+  } as Record<TTSProviderId, { apiKey: string; baseUrl: string; model?: string; enabled: boolean }>,
   asrProvidersConfig: {
     'openai-whisper': { apiKey: '', baseUrl: '', enabled: true },
     'browser-native': { apiKey: '', baseUrl: '', enabled: true },
     'qwen-asr': { apiKey: '', baseUrl: '', enabled: false },
+    'lemonade-asr': { apiKey: '', baseUrl: '', enabled: false },
   } as Record<ASRProviderId, { apiKey: string; baseUrl: string; enabled: boolean }>,
 });
 
@@ -345,7 +356,9 @@ const getDefaultImageConfig = () => ({
     seedream: { apiKey: '', baseUrl: '', enabled: false },
     'qwen-image': { apiKey: '', baseUrl: '', enabled: false },
     'nano-banana': { apiKey: '', baseUrl: '', enabled: false },
+    'minimax-image': { apiKey: '', baseUrl: '', enabled: false },
     'grok-image': { apiKey: '', baseUrl: '', enabled: false },
+    lemonade: { apiKey: '', baseUrl: '', enabled: false },
   } as Record<ImageProviderId, { apiKey: string; baseUrl: string; enabled: boolean }>,
 });
 
@@ -358,6 +371,7 @@ const getDefaultVideoConfig = () => ({
     kling: { apiKey: '', baseUrl: '', enabled: false },
     veo: { apiKey: '', baseUrl: '', enabled: false },
     sora: { apiKey: '', baseUrl: '', enabled: false },
+    'minimax-video': { apiKey: '', baseUrl: '', enabled: false },
     'grok-video': { apiKey: '', baseUrl: '', enabled: false },
   } as Record<VideoProviderId, { apiKey: string; baseUrl: string; enabled: boolean }>,
 });
@@ -738,7 +752,14 @@ export const useSettingsStore = create<SettingsState>()(
           })),
 
         // Image Generation actions
-        setImageProvider: (providerId) => set({ imageProviderId: providerId }),
+        setImageProvider: (providerId) =>
+          set(() => {
+            const models = IMAGE_PROVIDERS[providerId]?.models || [];
+            return {
+              imageProviderId: providerId,
+              imageModelId: models[0]?.id || '',
+            };
+          }),
         setImageModelId: (modelId) => set({ imageModelId: modelId }),
 
         setImageProviderConfig: (providerId, config) =>

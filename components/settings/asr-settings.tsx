@@ -30,6 +30,7 @@ import { Mic, MicOff, CheckCircle2, XCircle, Eye, EyeOff, Plus, Loader2 } from '
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { createLogger } from '@/lib/logger';
+import { normalizeASRUploadAudio } from '@/lib/audio/wav-utils';
 
 const log = createLogger('ASRSettings');
 
@@ -142,6 +143,7 @@ export function ASRSettings({ selectedProviderId }: ASRSettingsProps) {
             if (baseUrlValue?.trim()) formData.append('baseUrl', baseUrlValue);
 
             try {
+
               const response = await fetch('/api/transcription', {
                 method: 'POST',
                 body: formData,
@@ -272,6 +274,7 @@ export function ASRSettings({ selectedProviderId }: ASRSettingsProps) {
             } else {
               switch (selectedProviderId) {
                 case 'openai-whisper':
+                case 'lemonade-asr':
                   endpointPath = '/audio/transcriptions';
                   break;
                 case 'qwen-asr':

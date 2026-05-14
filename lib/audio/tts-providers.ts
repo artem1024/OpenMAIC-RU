@@ -9,6 +9,7 @@
  * - Azure TTS: https://learn.microsoft.com/en-us/azure/ai-services/speech-service/text-to-speech
  * - GLM TTS: https://docs.bigmodel.cn/cn/guide/models/sound-and-video/glm-tts
  * - Qwen TTS: https://bailian.console.aliyun.com/
+ * - MiniMax TTS: https://platform.minimaxi.com/docs/api-reference/speech-t2a-http
  * - ElevenLabs TTS: https://elevenlabs.io/docs/api-reference/text-to-speech/convert
  * - Browser Native: Web Speech API (client-side only)
  *
@@ -138,11 +139,17 @@ export async function generateTTS(
     case 'edge-tts':
       return await generateEdgeTTS(config, text);
 
+    case 'minimax-tts':
+      return await generateMiniMaxTTS(config, text);
+
     case 'elevenlabs-tts':
       return await generateElevenLabsTTS(config, text);
 
     case 'gemini-tts':
       return await generateGeminiTTS(config, text);
+
+    case 'lemonade-tts':
+      return await generateLemonadeTTS(config, text);
 
     case 'browser-native-tts':
       throw new Error(
@@ -191,6 +198,83 @@ async function generateOpenAITTS(
     audio: new Uint8Array(arrayBuffer),
     format: 'mp3',
   };
+}
+
+/**
+ * Lemonade TTS implementation (OpenAI-compatible /v1/audio/speech).
+ */
+async function generateLemonadeTTS(
+  config: TTSModelConfig,
+  text: string,
+): Promise<TTSGenerationResult> {
+  const baseUrl = (config.baseUrl || TTS_PROVIDERS['lemonade-tts'].defaultBaseUrl || '').replace(
+    /\/$/,
+    '',
+  );
+  const modelId = config.modelId || TTS_PROVIDERS['lemonade-tts'].defaultModelId;
+  const voice = config.voice || 'af_heart';
+
+  const response = await fetch(`${baseUrl}/audio/speech`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      ...getBackendAuthHeaders(config.apiKey),
+    },
+    body: JSON.stringify({
+      model: modelId,
+      input: text,
+      voice,
+      speed: config.speed || 1.0,
+      response_format: config.format || 'wav',
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Lemonade TTS API error: ${await readTTSApiError(response)}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const contentType = (response.headers.get('content-type') || '').toLowerCase();
+  let format = 'wav';
+  if (contentType.includes('mp3') || contentType.includes('mpeg')) format = 'mp3';
+  else if (contentType.includes('flac')) format = 'flac';
+  else if (contentType.includes('opus')) format = 'opus';
+  else if (contentType.includes('pcm')) format = 'pcm';
+  return {
+    audio: new Uint8Array(arrayBuffer),
+    format,
+  };
+}
+
+function getBackendAuthHeaders(apiKey?: string): Record<string, string> {
+  return apiKey?.trim() ? { Authorization: `Bearer ${apiKey.trim()}` } : {};
+}
+
+
+
+function base64ToBlob(base64: string, mimeType?: string): Blob {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType || 'audio/wav' });
+}
+
+
+
+async function readTTSApiError(response: Response): Promise<string> {
+  const text = await response.text().catch(() => response.statusText);
+  if (!text) return response.statusText;
+  try {
+    const json = JSON.parse(text) as { detail?: unknown; error?: { message?: string } | string };
+    if (typeof json.detail === 'string') return json.detail;
+    if (typeof json.error === 'string') return json.error;
+    if (json.error?.message) return json.error.message;
+  } catch {
+    // Fall through to raw text.
+  }
+  return text;
 }
 
 /**
@@ -826,6 +910,69 @@ async function generateEdgeTTS(
 }
 
 /**
+ * MiniMax TTS implementation (synchronous HTTP API)
+ */
+async function generateMiniMaxTTS(
+  config: TTSModelConfig,
+  text: string,
+): Promise<TTSGenerationResult> {
+  const baseUrl = (config.baseUrl || TTS_PROVIDERS['minimax-tts'].defaultBaseUrl || '').replace(
+    /\/$/,
+    '',
+  );
+  const response = await fetch(`${baseUrl}/v1/t2a_v2`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      'Content-Type': 'application/json; charset=utf-8',
+    },
+    body: JSON.stringify({
+      model: config.model || 'speech-2.8-turbo',
+      text,
+      stream: false,
+      output_format: 'hex',
+      voice_setting: {
+        voice_id: config.voice,
+        speed: config.speed || 1.0,
+        vol: 1,
+        pitch: 0,
+      },
+      audio_setting: {
+        sample_rate: 32000,
+        bitrate: 128000,
+        format: config.format || 'mp3',
+        channel: 1,
+      },
+      language_boost: 'auto',
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => response.statusText);
+    throw new Error(`MiniMax TTS API error: ${errorText}`);
+  }
+
+  const data = await response.json();
+  const hexAudio = data?.data?.audio;
+  if (!hexAudio || typeof hexAudio !== 'string') {
+    throw new Error(`MiniMax TTS error: No audio returned. Response: ${JSON.stringify(data)}`);
+  }
+
+  const cleanedHex = hexAudio.trim();
+  if (cleanedHex.length % 2 !== 0) {
+    throw new Error('MiniMax TTS error: invalid hex audio payload length');
+  }
+
+  const audio = new Uint8Array(
+    cleanedHex.match(/.{1,2}/g)?.map((byte: string) => parseInt(byte, 16)) || [],
+  );
+  return {
+    audio,
+    format: data?.extra_info?.audio_format || config.format || 'mp3',
+  };
+}
+
+/**
  * ElevenLabs TTS implementation (direct API call with voice-specific endpoint)
  */
 async function generateElevenLabsTTS(
@@ -959,6 +1106,7 @@ export async function getCurrentTTSConfig(): Promise<TTSModelConfig> {
     providerId: ttsProviderId,
     apiKey: providerConfig?.apiKey,
     baseUrl: providerConfig?.baseUrl || providerConfig?.customDefaultBaseUrl,
+    model: providerConfig?.model,
     voice: ttsVoice,
     speed: ttsSpeed,
   };

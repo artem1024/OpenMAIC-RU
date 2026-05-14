@@ -22,17 +22,29 @@ export const maxDuration = 30;
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { text, audioId, ttsProviderId, ttsVoice, ttsSpeed, ttsApiKey, ttsBaseUrl, speakerName } =
-      body as {
-        text: string;
-        audioId: string;
-        ttsProviderId: TTSProviderId;
-        ttsVoice: string;
-        ttsSpeed?: number;
-        ttsApiKey?: string;
-        ttsBaseUrl?: string;
-        speakerName?: string;
-      };
+    const {
+      text,
+      audioId,
+      ttsProviderId,
+      ttsModelId,
+      ttsVoice,
+      ttsSpeed,
+      ttsModel,
+      ttsApiKey,
+      ttsBaseUrl,
+      speakerName,
+    } = body as {
+      text: string;
+      audioId: string;
+      ttsProviderId: TTSProviderId;
+      ttsModelId?: string;
+      ttsVoice: string;
+      ttsSpeed?: number;
+      ttsModel?: string;
+      ttsApiKey?: string;
+      ttsBaseUrl?: string;
+      speakerName?: string;
+    };
 
     // Validate required fields
     if (!text || !audioId || !ttsProviderId || !ttsVoice) {
@@ -68,13 +80,14 @@ export async function POST(req: NextRequest) {
       providerId: ttsProviderId,
       voice: ttsVoice,
       speed: ttsSpeed ?? 1.0,
+      model: ttsModel,
       apiKey,
       baseUrl,
       speakerName,
     };
 
     log.info(
-      `Generating TTS: provider=${ttsProviderId}, voice=${ttsVoice}, audioId=${audioId}, textLen=${text.length}`,
+      `Generating TTS: provider=${ttsProviderId}, model=${ttsModelId || ttsModel || 'default'}, voice=${ttsVoice}, audioId=${audioId}, textLen=${text.length}`,
     );
 
     // Generate audio

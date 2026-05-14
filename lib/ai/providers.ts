@@ -6,7 +6,7 @@
  * - Anthropic Claude (native)
  * - Google Gemini (native)
  * - MiniMax (Anthropic-compatible, recommended by official)
- * - OpenAI-compatible providers (DeepSeek, Kimi, GLM, SiliconFlow, Doubao, etc.)
+ * - OpenAI-compatible providers (DeepSeek, Kimi, GLM, SiliconFlow, Doubao, Lemonade, etc.)
  *
  * Sources:
  * - https://platform.openai.com/docs/models
@@ -15,7 +15,7 @@
  * - https://api-docs.deepseek.com/quick_start/pricing
  * - https://platform.moonshot.cn/docs/pricing/chat
  * - https://platform.minimaxi.com/docs/guides/text-generation
- * - https://platform.minimax.io/docs/api-reference/text-anthropic-api
+ * - https://platform.minimaxi.com/docs/api-reference/text-anthropic-api
  * - https://docs.bigmodel.cn/cn/guide/start/model-overview
  * - https://help.aliyun.com/zh/model-studio/models (Qwen/DashScope)
  * - https://siliconflow.cn/models
@@ -412,6 +412,10 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
     name: 'GLM',
     type: 'openai',
     defaultBaseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+    alternateBaseUrls: [
+      { label: 'settings.baseUrlRegion.china', url: 'https://open.bigmodel.cn/api/paas/v4' },
+      { label: 'settings.baseUrlRegion.international', url: 'https://api.z.ai/api/paas/v4' },
+    ],
     requiresApiKey: true,
     icon: '/logos/glm.svg',
     models: [
@@ -586,6 +590,10 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
     name: 'Kimi',
     type: 'openai',
     defaultBaseUrl: 'https://api.moonshot.cn/v1',
+    alternateBaseUrls: [
+      { label: 'settings.baseUrlRegion.china', url: 'https://api.moonshot.cn/v1' },
+      { label: 'settings.baseUrlRegion.international', url: 'https://api.moonshot.ai/v1' },
+    ],
     requiresApiKey: true,
     icon: '/logos/kimi.png',
     models: [
@@ -665,12 +673,16 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
     name: 'MiniMax',
     type: 'anthropic',
     defaultBaseUrl: 'https://api.minimaxi.com/anthropic/v1',
+    alternateBaseUrls: [
+      { label: 'settings.baseUrlRegion.china', url: 'https://api.minimaxi.com/anthropic/v1' },
+      { label: 'settings.baseUrlRegion.international', url: 'https://api.minimax.io/anthropic/v1' },
+    ],
     requiresApiKey: true,
     icon: '/logos/minimax.svg',
     models: [
       {
-        id: 'MiniMax-M2.5',
-        name: 'MiniMax M2.5',
+        id: 'MiniMax-M2',
+        name: 'MiniMax M2',
         contextWindow: 204800,
         outputWindow: 8192,
         capabilities: { streaming: true, tools: true, vision: false },
@@ -683,15 +695,36 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
         capabilities: { streaming: true, tools: true, vision: false },
       },
       {
-        id: 'MiniMax-M2.1-lightning',
-        name: 'MiniMax M2.1 Lightning',
+        id: 'MiniMax-M2.1-highspeed',
+        name: 'MiniMax M2.1 Highspeed',
         contextWindow: 204800,
         outputWindow: 8192,
         capabilities: { streaming: true, tools: true, vision: false },
       },
       {
-        id: 'MiniMax-M2',
-        name: 'MiniMax M2',
+        id: 'MiniMax-M2.5',
+        name: 'MiniMax M2.5',
+        contextWindow: 204800,
+        outputWindow: 8192,
+        capabilities: { streaming: true, tools: true, vision: false },
+      },
+      {
+        id: 'MiniMax-M2.5-highspeed',
+        name: 'MiniMax M2.5 Highspeed',
+        contextWindow: 204800,
+        outputWindow: 8192,
+        capabilities: { streaming: true, tools: true, vision: false },
+      },
+      {
+        id: 'MiniMax-M2.7',
+        name: 'MiniMax M2.7',
+        contextWindow: 204800,
+        outputWindow: 8192,
+        capabilities: { streaming: true, tools: true, vision: false },
+      },
+      {
+        id: 'MiniMax-M2.7-highspeed',
+        name: 'MiniMax M2.7 Highspeed',
         contextWindow: 204800,
         outputWindow: 8192,
         capabilities: { streaming: true, tools: true, vision: false },
@@ -945,6 +978,22 @@ export const PROVIDERS: Record<ProviderId, ProviderConfig> = {
       },
     ],
   },
+
+  lemonade: {
+    id: 'lemonade',
+    name: 'Lemonade',
+    type: 'openai',
+    defaultBaseUrl: 'http://localhost:13305/v1',
+    requiresApiKey: false,
+    icon: '/logos/lemonade.svg',
+    models: [
+      {
+        id: 'Gemma-4-26B-A4B-it-GGUF',
+        name: 'Gemma 4 26B A4B IT GGUF',
+        capabilities: { streaming: true, tools: true, vision: false },
+      },
+    ],
+  },
 };
 
 /**
@@ -1030,6 +1079,24 @@ function getCompatThinkingBodyParams(
   return undefined;
 }
 
+function normalizeMiniMaxAnthropicBaseUrl(
+  providerId: ProviderId,
+  baseUrl?: string,
+): string | undefined {
+  if (providerId !== 'minimax' || !baseUrl) {
+    return baseUrl;
+  }
+
+  const trimmed = baseUrl.replace(/\/$/, '');
+  if (trimmed.endsWith('/anthropic/v1')) {
+    return trimmed;
+  }
+  if (trimmed.endsWith('/anthropic')) {
+    return `${trimmed}/v1`;
+  }
+  return `${trimmed}/anthropic/v1`;
+}
+
 /**
  * Get a configured language model instance with its info
  * Accepts individual parameters for flexibility and security
@@ -1059,7 +1126,10 @@ export function getModel(config: ModelConfig): ModelWithInfo {
 
   // Resolve base URL: explicit > provider default > SDK default
   const provider = getProviderConfig(config.providerId);
-  const effectiveBaseUrl = config.baseUrl || provider?.defaultBaseUrl || undefined;
+  const effectiveBaseUrl = normalizeMiniMaxAnthropicBaseUrl(
+    config.providerId,
+    config.baseUrl || provider?.defaultBaseUrl || undefined,
+  );
 
   let model: LanguageModel;
 
@@ -1081,12 +1151,19 @@ export function getModel(config: ModelConfig): ModelWithInfo {
           const thinkingCtx = (globalThis as Record<string, unknown>).__thinkingContext as
             | { getStore?: () => unknown }
             | undefined;
-          const thinking = thinkingCtx?.getStore?.() as ThinkingConfig | undefined;
+          const thinkingFromContext = thinkingCtx?.getStore?.() as ThinkingConfig | undefined;
+          // Lemonade has no default thinking config in our fork — Phase 1 #16
+          // overlay (model-metadata) is not yet merged. Use only client-supplied
+          // config from the AsyncLocalStorage context.
+          const thinking = thinkingFromContext;
           if (thinking && init?.body && typeof init.body === 'string') {
             const extra = getCompatThinkingBodyParams(providerId, thinking);
             if (extra) {
               try {
                 const body = JSON.parse(init.body);
+                if (providerId === 'lemonade' && 'stream_options' in body) {
+                  delete body.stream_options;
+                }
                 Object.assign(body, extra);
                 init = { ...init, body: JSON.stringify(body) };
               } catch {
@@ -1094,7 +1171,44 @@ export function getModel(config: ModelConfig): ModelWithInfo {
               }
             }
           }
-          return globalThis.fetch(url, init);
+          const response = await globalThis.fetch(url, init);
+
+          if (providerId !== 'lemonade') {
+            return response;
+          }
+
+          const contentType = response.headers.get('content-type') || '';
+          let isStreamingRequest = false;
+          if (init?.body && typeof init.body === 'string') {
+            try {
+              const requestBody = JSON.parse(init.body);
+              isStreamingRequest = requestBody?.stream === true;
+            } catch {
+              /* ignore request-body inspection failure */
+            }
+          }
+
+          if (isStreamingRequest) {
+            return response;
+          }
+
+          try {
+            const cloned = response.clone();
+            const text = await cloned.text();
+
+            try {
+              JSON.parse(text);
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              log.warn(
+                `[Lemonade] Invalid JSON response from OpenAI-compatible path: status=${response.status}, contentType=${contentType || 'n/a'}, bodyLen=${text.length}, first=${JSON.stringify(text.slice(0, 500))}, last=${JSON.stringify(text.slice(Math.max(0, text.length - 500)))}, parseError=${message}`,
+              );
+            }
+          } catch (error) {
+            log.warn('[Lemonade] Failed to inspect JSON response body:', error);
+          }
+
+          return response;
         };
       }
 

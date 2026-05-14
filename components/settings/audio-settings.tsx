@@ -47,6 +47,8 @@ function getTTSProviderName(providerId: TTSProviderId, t: (key: string) => strin
     'edge-tts': t('settings.providerEdgeTTS'),
     'elevenlabs-tts': t('settings.providerElevenLabsTTS'),
     'gemini-tts': t('settings.providerGeminiTTS'),
+    'minimax-tts': t('settings.providerMiniMaxTTS'),
+    'lemonade-tts': t('settings.providerLemonadeTTS'),
     'browser-native-tts': t('settings.providerBrowserNativeTTS'),
   };
   return names[providerId];
@@ -57,6 +59,7 @@ function getASRProviderName(providerId: ASRProviderId, t: (key: string) => strin
     'openai-whisper': t('settings.providerOpenAIWhisper'),
     'browser-native': t('settings.providerBrowserNative'),
     'qwen-asr': t('settings.providerQwenASR'),
+    'lemonade-asr': t('settings.providerLemonadeASR'),
   };
   return names[providerId];
 }
@@ -122,7 +125,7 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
 
   const handleTTSProviderConfigChange = (
     providerId: TTSProviderId,
-    config: Partial<{ apiKey: string; baseUrl: string; enabled: boolean }>,
+    config: Partial<{ apiKey: string; baseUrl: string; model?: string; enabled: boolean }>,
   ) => {
     setTTSProviderConfig(providerId, config);
     onSave?.();
@@ -491,6 +494,7 @@ export function AudioSettings({ onSave }: AudioSettingsProps = {}) {
             }
 
             try {
+
               const response = await fetch('/api/transcription', {
                 method: 'POST',
                 body: formData,

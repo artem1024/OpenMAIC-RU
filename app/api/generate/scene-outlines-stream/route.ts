@@ -290,6 +290,9 @@ export async function POST(req: NextRequest) {
               lastError = fullText.trim()
                 ? 'LLM response could not be parsed into outlines'
                 : 'LLM returned empty response';
+              log.warn(
+                `Outlines attempt ${attempt} diagnostics: textLen=${fullText.length}, outlines=${parsedOutlines.length}, preview=${JSON.stringify(fullText.slice(0, 240))}`,
+              );
 
               if (attempt <= MAX_STREAM_RETRIES) {
                 log.warn(
@@ -305,6 +308,9 @@ export async function POST(req: NextRequest) {
               }
             } catch (error) {
               lastError = error instanceof Error ? error.message : String(error);
+              log.warn(
+                `Outlines stream error detail (attempt ${attempt}/${MAX_STREAM_RETRIES + 1}): ${lastError}`,
+              );
 
               if (attempt <= MAX_STREAM_RETRIES) {
                 log.warn(

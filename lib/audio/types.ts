@@ -85,6 +85,8 @@ export type BuiltInTTSProviderId =
   | 'edge-tts'
   | 'elevenlabs-tts'
   | 'gemini-tts'
+  | 'minimax-tts'
+  | 'lemonade-tts'
   | 'browser-native-tts';
 
 export type TTSProviderId = BuiltInTTSProviderId | `custom-tts-${string}`;
@@ -117,6 +119,12 @@ export interface TTSProviderConfig {
     max: number;
     default: number;
   };
+  /** Whether this provider supports per-call model selection */
+  supportsModelSelection?: boolean;
+  /** Available models for selection (when supportsModelSelection=true) */
+  models?: Array<{ id: string; name: string }>;
+  /** Default model id used by this provider when none supplied. */
+  defaultModelId?: string;
 }
 
 /**
@@ -126,6 +134,9 @@ export interface TTSModelConfig {
   providerId: TTSProviderId;
   apiKey?: string;
   baseUrl?: string;
+  model?: string;
+  /** Per-call model id (alias for `model` used by Lemonade/MiniMax). */
+  modelId?: string;
   voice: string;
   speed?: number;
   format?: string;
@@ -143,7 +154,11 @@ export interface TTSModelConfig {
  * Add new ASR providers here as union members.
  * Keep in sync with ASR_PROVIDERS registry in constants.ts
  */
-export type BuiltInASRProviderId = 'openai-whisper' | 'browser-native' | 'qwen-asr';
+export type BuiltInASRProviderId =
+  | 'openai-whisper'
+  | 'browser-native'
+  | 'qwen-asr'
+  | 'lemonade-asr';
 
 export type ASRProviderId = BuiltInASRProviderId | `custom-asr-${string}`;
 
@@ -158,6 +173,10 @@ export interface ASRProviderConfig {
   icon?: string;
   supportedLanguages: string[];
   supportedFormats: string[];
+  /** Available models for selection. */
+  models?: Array<{ id: string; name: string }>;
+  /** Default model id used when none is supplied. */
+  defaultModelId?: string;
 }
 
 /**
@@ -168,6 +187,8 @@ export interface ASRModelConfig {
   apiKey?: string;
   baseUrl?: string;
   language?: string;
+  /** Per-call model id (used by Lemonade Whisper variants). */
+  modelId?: string;
 }
 
 /** Returns true if the provider ID is a user-defined custom TTS provider. */

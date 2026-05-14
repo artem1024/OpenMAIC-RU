@@ -92,6 +92,8 @@ function getTTSProviderName(providerId: TTSProviderId, t: (key: string) => strin
     'edge-tts': t('settings.providerEdgeTTS'),
     'elevenlabs-tts': t('settings.providerElevenLabsTTS'),
     'gemini-tts': t('settings.providerGeminiTTS'),
+    'minimax-tts': t('settings.providerMiniMaxTTS'),
+    'lemonade-tts': t('settings.providerLemonadeTTS'),
     'browser-native-tts': t('settings.providerBrowserNativeTTS'),
   };
   return names[providerId] || providerId;
@@ -277,6 +279,7 @@ export function MediaPopover({ onSettingsOpen }: MediaPopoverProps) {
         speed: ttsSpeed,
         apiKey: providerConfig?.apiKey,
         baseUrl: providerConfig?.baseUrl || providerConfig?.customDefaultBaseUrl,
+        model: providerConfig?.model,
       });
     } catch (error) {
       const message =
