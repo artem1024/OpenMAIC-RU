@@ -1,17 +1,16 @@
 /**
  * Widget configuration types for Deep Interactive Mode.
  *
- * Phase 7.3a (Code widget) — baseline: only the `code` widget type is
- * supported behind the `INTERACTIVE_WIDGET_CODE_ENABLED` feature flag.
- * Other widget types (diagram, simulation, visualization3d, game) are
- * declared here for typed forward-compat but are NOT executable yet —
- * they are gated by their own per-widget flags in subsequent subphases
- * (7.3b–e). Generation paths that emit them are not yet wired in this
- * subphase.
+ * Phase 7.3a (Code widget) — baseline. Phase 7.3b adds DiagramConfig.
+ * Each widget type sits behind its own per-widget feature flag
+ * (`INTERACTIVE_WIDGET_*_ENABLED`); flag-off types fall back to the
+ * legacy HTML-only sandbox path with no postMessage bridge attached.
+ * Subsequent subphases (7.3c–e) will replace remaining stubs with full
+ * configs.
  *
  * Adapted from upstream commit c02a607 ("feat: interactive mode clean
  * (#461)"). RU-fork keeps the same type names so future cherry-picks
- * for 7.3b–e can land with minimal renames.
+ * for 7.3c–e can land with minimal renames.
  */
 
 // ==================== Base Types ====================
@@ -74,16 +73,64 @@ export interface CodeConfig {
   teacherActions?: TeacherAction[];
 }
 
-// ==================== Stub configs for 7.3b–e ====================
+// ==================== Diagram Widget (Phase 7.3b) ====================
+
+/**
+ * DiagramNode — a single node in an interactive diagram.
+ *
+ * The widget renders nodes as SVG shapes inside a sandboxed iframe (no
+ * extra CDN — diagrams are self-contained SVG; see widget-sandbox.md).
+ * `position` is optional — if omitted the widget runtime auto-layouts
+ * (mind-map / hierarchy auto-arrange). `details` powers the click-to-
+ * expand sidebar described in the upstream diagram-content prompt.
+ */
+export interface DiagramNode {
+  id: string;
+  label: string;
+  position?: { x: number; y: number };
+  details?: string;
+  type?: 'default' | 'decision' | 'start' | 'end';
+}
+
+/** DiagramEdge — directed connection between two nodes by id. */
+export interface DiagramEdge {
+  id: string;
+  from: string;
+  to: string;
+  label?: string;
+}
+
+/**
+ * DiagramConfig — declarative spec for the `diagram` widget.
+ *
+ * The widget is rendered as a self-contained HTML+SVG document inside a
+ * sandboxed iframe (see `components/scene-renderers/interactive-renderer.tsx`).
+ * Unlike the code widget, the diagram widget does NOT pull in any extra
+ * CDN — SVG primitives + inline JS are all that's needed. Step-by-step
+ * reveal animation is driven by `revealOrder`; if absent, the widget
+ * reveals all nodes at once.
+ *
+ * Reports back to the player via:
+ *   - `widget:diagram:result` { revealedNodes, currentStep }
+ *   - `widget:state-change`   for arbitrary widget-internal state sync
+ *   - `widget:complete`       when the user has stepped through to end
+ */
+export interface DiagramConfig {
+  type: 'diagram';
+  diagramType: 'flowchart' | 'mindmap' | 'hierarchy' | 'system';
+  description: string;
+  nodes: DiagramNode[];
+  edges: DiagramEdge[];
+  /** Node IDs in reveal sequence (step-by-step "Next/Prev" navigation). */
+  revealOrder?: string[];
+  teacherActions?: TeacherAction[];
+}
+
+// ==================== Stub configs for 7.3c–e ====================
 // Type-only declarations so that the discriminated union compiles. The
-// generation pipeline does NOT emit these in 7.3a — see subsequent
+// generation pipeline does NOT emit these in 7.3a/b — see subsequent
 // subphases. Each will be replaced with the upstream definition when
 // its widget lands.
-
-export interface DiagramConfigStub {
-  type: 'diagram';
-  [key: string]: unknown;
-}
 
 export interface SimulationConfigStub {
   type: 'simulation';
@@ -103,7 +150,7 @@ export interface GameConfigStub {
 /** Discriminated union over all widget configs. */
 export type WidgetConfig =
   | CodeConfig
-  | DiagramConfigStub
+  | DiagramConfig
   | SimulationConfigStub
   | Visualization3DConfigStub
   | GameConfigStub;
@@ -131,6 +178,18 @@ export type WidgetToPlayerMessage =
       source: 'openmaic-widget';
       type: 'widget:code:result';
       payload: { passed: number; total: number; testResults: Array<{ id: string; pass: boolean }> };
+    }
+  | {
+      source: 'openmaic-widget';
+      type: 'widget:diagram:result';
+      payload: {
+        /** IDs of nodes currently revealed (in order). */
+        revealedNodes: string[];
+        /** Index into `revealOrder` (0-based). */
+        currentStep: number;
+        /** Optional: id of the node the user just clicked. */
+        focusedNodeId?: string;
+      };
     }
   | { source: 'openmaic-widget'; type: 'widget:state-change'; state: Record<string, unknown> }
   | { source: 'openmaic-widget'; type: 'widget:complete'; payload?: Record<string, unknown> };
