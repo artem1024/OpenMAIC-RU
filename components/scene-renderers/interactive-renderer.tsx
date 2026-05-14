@@ -13,7 +13,7 @@ interface InteractiveRendererProps {
 }
 
 /**
- * Phase 7.3a/b/c feature flags for individual Deep Interactive widget types.
+ * Phase 7.3a/b/c/d feature flags for individual Deep Interactive widget types.
  * Each flag defaults OFF — until the flag is set, widget-typed scenes
  * fall back to the legacy HTML-only sandbox path with no postMessage
  * bridge attached.
@@ -27,19 +27,23 @@ const DIAGRAM_WIDGET_ENABLED =
   (process.env.NEXT_PUBLIC_INTERACTIVE_WIDGET_DIAGRAM_ENABLED ?? '').toLowerCase() === 'true';
 const SIMULATION_WIDGET_ENABLED =
   (process.env.NEXT_PUBLIC_INTERACTIVE_WIDGET_SIMULATION_ENABLED ?? '').toLowerCase() === 'true';
+const VISUALIZATION3D_WIDGET_ENABLED =
+  (process.env.NEXT_PUBLIC_INTERACTIVE_WIDGET_3D_ENABLED ?? '').toLowerCase() === 'true';
 
 /**
  * Returns true if this scene should run with the Deep Interactive widget
  * runtime (per-scene postMessage bridge + sandbox unchanged).
  *
- * Currently `code` (7.3a), `diagram` (7.3b), and `simulation` (7.3c) are
- * implemented. 7.3d–e will widen this predicate behind their own flags.
+ * Currently `code` (7.3a), `diagram` (7.3b), `simulation` (7.3c), and
+ * `visualization3d` (7.3d) are implemented. 7.3e will widen this
+ * predicate behind its own flag.
  */
 function isWidgetEnabled(content: InteractiveContent): boolean {
   if (!content.widgetType) return false;
   if (content.widgetType === 'code') return CODE_WIDGET_ENABLED;
   if (content.widgetType === 'diagram') return DIAGRAM_WIDGET_ENABLED;
   if (content.widgetType === 'simulation') return SIMULATION_WIDGET_ENABLED;
+  if (content.widgetType === 'visualization3d') return VISUALIZATION3D_WIDGET_ENABLED;
   return false;
 }
 
@@ -52,13 +56,17 @@ function isWidgetEnabled(content: InteractiveContent): boolean {
 // frame-src 'none', object-src 'none') and embedding tags (<iframe>/<object>/<embed>/<applet>)
 // are stripped from the model output before injection.
 //
-// Widget mode (Phase 7.3a code, 7.3b diagram, 7.3c simulation): the iframe still
-// runs under the same hardened sandbox + CSP. The only difference is that a
-// per-scene postMessage bridge is attached so the player can drive TeacherActions
-// inside the widget, and the widget can report `widget:complete` /
-// `widget:code:result` / `widget:diagram:result` / `widget:simulation:result` back.
-// Widget → parent traffic is forwarded through `playerBridge` so embedded osvaivai
-// receives lesson:end / quiz:answer events as usual.
+// Widget mode (Phase 7.3a code, 7.3b diagram, 7.3c simulation, 7.3d
+// visualization3d): the iframe still runs under the same hardened sandbox
+// + CSP (Phase 7.3d adds `https://unpkg.com` to script-src/connect-src so
+// Three.js can load inside the iframe — sandbox itself unchanged). The
+// only behavioural difference is that a per-scene postMessage bridge is
+// attached so the player can drive TeacherActions inside the widget, and
+// the widget can report `widget:complete` / `widget:code:result` /
+// `widget:diagram:result` / `widget:simulation:result` /
+// `widget:visualization3d:result` back. Widget → parent traffic is
+// forwarded through `playerBridge` so embedded osvaivai receives
+// lesson:end / quiz:answer events as usual.
 // See `/home/operator1/projects/osvaivai/docs/widget-sandbox.md` for the full
 // contract.
 export function InteractiveRenderer({ content, mode: _mode, sceneId }: InteractiveRendererProps) {
@@ -114,9 +122,10 @@ export function InteractiveRenderer({ content, mode: _mode, sceneId }: Interacti
         playerBridge.sceneChanged(0, sceneId, 0);
       }
       // widget:code:result, widget:diagram:result, widget:simulation:result,
-      // widget:state-change etc. — currently consumed only by future
-      // ActionEngine integrations; intentionally not bridged outside the
-      // iframe to avoid leaking widget internals to parent frames.
+      // widget:visualization3d:result, widget:state-change etc. — currently
+      // consumed only by future ActionEngine integrations; intentionally
+      // not bridged outside the iframe to avoid leaking widget internals
+      // to parent frames.
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
@@ -229,7 +238,7 @@ function patchHtmlForIframe(html: string): string {
   //   - base-uri 'none'    → <base href> redirection
   // 'unsafe-inline' is required because our interactive slides ship inline
   // <script> and inline event handlers; the sandbox null-origin makes this safe.
-  // script-src/connect-src whitelist the two CDNs our interactive scenes
+  // script-src/connect-src whitelist the CDNs our interactive scenes
   // legitimately load:
   //   - https://cdn.tailwindcss.com — the interactive-html generation prompt
   //     instructs the model to ship Tailwind via this CDN; without it the
@@ -237,9 +246,17 @@ function patchHtmlForIframe(html: string): string {
   //   - https://cdn.jsdelivr.net — interactive-post-processor.ts injects
   //     KaTeX (katex.min.js + auto-render.min.js) from jsdelivr to render
   //     LaTeX formulas inside interactive slides.
+  //   - https://unpkg.com (Phase 7.3d) — the visualization3d widget loads
+  //     Three.js (^0.160) via an ES-module import-map pointing at
+  //     `https://unpkg.com/three@0.160.0/build/three.module.js` plus addons
+  //     (OrbitControls etc.) from `/examples/jsm/`. This CDN is added to
+  //     both `script-src` (to load three.module.js) and `connect-src`
+  //     (to fetch addon submodules dynamically). All other widget types
+  //     ignore unpkg even when the 3D flag is off — the entry just sits
+  //     in the allowlist unused. See widget-sandbox.md §7.3d.
   // The null-origin sandbox still prevents access to parent cookies/storage
   // even with these CDNs allowed.
-  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline' 'self' https://cdn.tailwindcss.com https://cdn.jsdelivr.net; style-src 'unsafe-inline' 'self' https: data:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src https://cdn.tailwindcss.com https://cdn.jsdelivr.net; frame-src 'none'; object-src 'none'; base-uri 'none';">`;
+  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'unsafe-inline' 'self' https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://unpkg.com; style-src 'unsafe-inline' 'self' https: data:; img-src 'self' data: blob: https:; font-src 'self' data: https:; connect-src https://cdn.tailwindcss.com https://cdn.jsdelivr.net https://unpkg.com; frame-src 'none'; object-src 'none'; base-uri 'none';">`;
 
   const iframeCss = `<style data-iframe-patch>
   html, body {
