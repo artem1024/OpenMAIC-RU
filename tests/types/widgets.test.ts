@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   isWidgetMessage,
   type DiagramConfig,
+  type SimulationConfig,
   type WidgetConfig,
   type WidgetToPlayerMessage,
 } from '@/lib/types/widgets';
@@ -24,6 +25,29 @@ describe('isWidgetMessage type guard', () => {
         revealedNodes: ['n1', 'n2'],
         currentStep: 1,
         focusedNodeId: 'n2',
+      },
+    };
+    expect(isWidgetMessage(msg)).toBe(true);
+  });
+
+  it('accepts widget:simulation:result with full payload', () => {
+    const msg: WidgetToPlayerMessage = {
+      source: 'openmaic-widget',
+      type: 'widget:simulation:result',
+      payload: {
+        variables: { angle: 45, velocity: 25 },
+        activePresetName: 'Hit the target',
+      },
+    };
+    expect(isWidgetMessage(msg)).toBe(true);
+  });
+
+  it('accepts widget:simulation:result without optional activePresetName', () => {
+    const msg: WidgetToPlayerMessage = {
+      source: 'openmaic-widget',
+      type: 'widget:simulation:result',
+      payload: {
+        variables: { angle: 30 },
       },
     };
     expect(isWidgetMessage(msg)).toBe(true);
@@ -89,5 +113,44 @@ describe('DiagramConfig (Phase 7.3b)', () => {
     expect(minimal.revealOrder).toBeUndefined();
     expect(minimal.teacherActions).toBeUndefined();
     expect(minimal.nodes[0].position).toBeUndefined();
+  });
+});
+
+describe('SimulationConfig (Phase 7.3c)', () => {
+  it('compiles as a valid WidgetConfig discriminant with full shape', () => {
+    const cfg: WidgetConfig = {
+      type: 'simulation',
+      concept: 'projectile_motion',
+      description: 'Tune launch angle and velocity to hit the target.',
+      variables: [
+        { name: 'angle', label: 'Launch Angle', min: 0, max: 90, default: 45, unit: '°' },
+        { name: 'velocity', label: 'Initial Velocity', min: 0, max: 50, default: 20, unit: 'm/s', step: 0.5 },
+      ],
+      presets: [
+        { name: 'Hit the target', variables: { angle: 30, velocity: 25 } },
+        { name: 'Free fall', variables: { angle: 90, velocity: 0 } },
+      ],
+    };
+    expect(cfg.type).toBe('simulation');
+    if (cfg.type === 'simulation') {
+      const sim = cfg as SimulationConfig;
+      expect(sim.variables).toHaveLength(2);
+      expect(sim.variables[0].unit).toBe('°');
+      expect(sim.variables[1].step).toBe(0.5);
+      expect(sim.presets?.[0].variables.angle).toBe(30);
+    }
+  });
+
+  it('allows omitting optional fields (presets, teacherActions, unit, step)', () => {
+    const minimal: SimulationConfig = {
+      type: 'simulation',
+      concept: 'pendulum',
+      description: 'Simple pendulum.',
+      variables: [{ name: 'length', label: 'Length', min: 0.1, max: 5, default: 1 }],
+    };
+    expect(minimal.presets).toBeUndefined();
+    expect(minimal.teacherActions).toBeUndefined();
+    expect(minimal.variables[0].unit).toBeUndefined();
+    expect(minimal.variables[0].step).toBeUndefined();
   });
 });

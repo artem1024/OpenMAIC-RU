@@ -13,7 +13,7 @@ interface InteractiveRendererProps {
 }
 
 /**
- * Phase 7.3a/b feature flags for individual Deep Interactive widget types.
+ * Phase 7.3a/b/c feature flags for individual Deep Interactive widget types.
  * Each flag defaults OFF — until the flag is set, widget-typed scenes
  * fall back to the legacy HTML-only sandbox path with no postMessage
  * bridge attached.
@@ -25,18 +25,21 @@ const CODE_WIDGET_ENABLED =
   (process.env.NEXT_PUBLIC_INTERACTIVE_WIDGET_CODE_ENABLED ?? '').toLowerCase() === 'true';
 const DIAGRAM_WIDGET_ENABLED =
   (process.env.NEXT_PUBLIC_INTERACTIVE_WIDGET_DIAGRAM_ENABLED ?? '').toLowerCase() === 'true';
+const SIMULATION_WIDGET_ENABLED =
+  (process.env.NEXT_PUBLIC_INTERACTIVE_WIDGET_SIMULATION_ENABLED ?? '').toLowerCase() === 'true';
 
 /**
  * Returns true if this scene should run with the Deep Interactive widget
  * runtime (per-scene postMessage bridge + sandbox unchanged).
  *
- * Currently `code` (7.3a) and `diagram` (7.3b) are implemented. 7.3c–e
- * will widen this predicate behind their own flags.
+ * Currently `code` (7.3a), `diagram` (7.3b), and `simulation` (7.3c) are
+ * implemented. 7.3d–e will widen this predicate behind their own flags.
  */
 function isWidgetEnabled(content: InteractiveContent): boolean {
   if (!content.widgetType) return false;
   if (content.widgetType === 'code') return CODE_WIDGET_ENABLED;
   if (content.widgetType === 'diagram') return DIAGRAM_WIDGET_ENABLED;
+  if (content.widgetType === 'simulation') return SIMULATION_WIDGET_ENABLED;
   return false;
 }
 
@@ -49,13 +52,13 @@ function isWidgetEnabled(content: InteractiveContent): boolean {
 // frame-src 'none', object-src 'none') and embedding tags (<iframe>/<object>/<embed>/<applet>)
 // are stripped from the model output before injection.
 //
-// Widget mode (Phase 7.3a code, 7.3b diagram): the iframe still runs under the
-// same hardened sandbox + CSP. The only difference is that a per-scene
-// postMessage bridge is attached so the player can drive TeacherActions inside
-// the widget, and the widget can report `widget:complete` /
-// `widget:code:result` / `widget:diagram:result` back. Widget → parent traffic
-// is forwarded through `playerBridge` so embedded osvaivai receives lesson:end
-// / quiz:answer events as usual.
+// Widget mode (Phase 7.3a code, 7.3b diagram, 7.3c simulation): the iframe still
+// runs under the same hardened sandbox + CSP. The only difference is that a
+// per-scene postMessage bridge is attached so the player can drive TeacherActions
+// inside the widget, and the widget can report `widget:complete` /
+// `widget:code:result` / `widget:diagram:result` / `widget:simulation:result` back.
+// Widget → parent traffic is forwarded through `playerBridge` so embedded osvaivai
+// receives lesson:end / quiz:answer events as usual.
 // See `/home/operator1/projects/osvaivai/docs/widget-sandbox.md` for the full
 // contract.
 export function InteractiveRenderer({ content, mode: _mode, sceneId }: InteractiveRendererProps) {
@@ -110,10 +113,10 @@ export function InteractiveRenderer({ content, mode: _mode, sceneId }: Interacti
         // that we surface so the parent can react (analytics, advance, etc.).
         playerBridge.sceneChanged(0, sceneId, 0);
       }
-      // widget:code:result, widget:diagram:result, widget:state-change etc. —
-      // currently consumed only by future ActionEngine integrations;
-      // intentionally not bridged outside the iframe to avoid leaking widget
-      // internals to parent frames.
+      // widget:code:result, widget:diagram:result, widget:simulation:result,
+      // widget:state-change etc. — currently consumed only by future
+      // ActionEngine integrations; intentionally not bridged outside the
+      // iframe to avoid leaking widget internals to parent frames.
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
