@@ -165,7 +165,10 @@ export default function ClassroomDetailPage() {
   return (
     <ThemeProvider>
       <MediaStageProvider value={classroomId}>
-        <div className="h-screen flex flex-col overflow-hidden">
+        <div
+          className="h-[100dvh] flex flex-col overflow-hidden touch-manipulation"
+          style={{ touchAction: 'manipulation' }}
+        >
           {loading ? (
             <div className="flex-1 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
               <div className="text-center text-muted-foreground">

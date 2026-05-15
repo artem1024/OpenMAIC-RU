@@ -187,6 +187,8 @@ export function BaseVideoElement({ elementInfo }: BaseVideoElementProps) {
             poster={task?.poster || elementInfo.poster}
             preload="metadata"
             controls
+            playsInline
+            webkit-playsinline="true"
             onEnded={handleEnded}
           />
         ) : (
