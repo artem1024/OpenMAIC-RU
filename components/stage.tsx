@@ -46,6 +46,11 @@ export function Stage({
   const { t } = useI18n();
   const searchParams = useSearchParams();
   const isEmbedded = searchParams?.get('embedded') === '1';
+  const isMobileParam = searchParams?.get('mobile') === '1';
+  // In embedded+mobile mode the chat panel is unusable (screen too narrow)
+  // and the toggle button just confuses learners, so we hide it entirely
+  // by not wiring up onToggleChat for the canvas/roundtable toolbars.
+  const hideChatToggle = isEmbedded && isMobileParam;
   const {
     mode,
     getCurrentScene,
@@ -743,7 +748,7 @@ export function Stage({
             sidebarCollapsed={sidebarCollapsed}
             chatCollapsed={chatAreaCollapsed}
             onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-            onToggleChat={() => setChatAreaCollapsed(!chatAreaCollapsed)}
+            onToggleChat={hideChatToggle ? undefined : () => setChatAreaCollapsed(!chatAreaCollapsed)}
             onPrevSlide={handlePreviousScene}
             onNextSlide={handleNextScene}
             onPlayPause={handlePlayPause}
@@ -864,7 +869,7 @@ export function Stage({
             sidebarCollapsed={sidebarCollapsed}
             chatCollapsed={chatAreaCollapsed}
             onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-            onToggleChat={() => setChatAreaCollapsed(!chatAreaCollapsed)}
+            onToggleChat={hideChatToggle ? undefined : () => setChatAreaCollapsed(!chatAreaCollapsed)}
             onPrevSlide={handlePreviousScene}
             onNextSlide={handleNextScene}
             onWhiteboardClose={handleWhiteboardToggle}
