@@ -699,7 +699,8 @@ export function Stage({
   const sceneViewerHeight = (() => {
     const headerHeight = isEmbedded ? 40 : 80; // Embedded: h-10 = 40px, Normal: h-20 = 80px
     if (mode === 'playback') {
-      return `calc(100% - ${headerHeight + 192}px)`; // Header + Roundtable
+      const roundtableHeight = isEmbedded && isMobileParam ? 96 : 192;
+      return `calc(100% - ${headerHeight + roundtableHeight}px)`; // Header + Roundtable
     }
     return `calc(100% - ${headerHeight}px)`;
   })();
@@ -748,7 +749,9 @@ export function Stage({
             sidebarCollapsed={sidebarCollapsed}
             chatCollapsed={chatAreaCollapsed}
             onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-            onToggleChat={hideChatToggle ? undefined : () => setChatAreaCollapsed(!chatAreaCollapsed)}
+            onToggleChat={
+              hideChatToggle ? undefined : () => setChatAreaCollapsed(!chatAreaCollapsed)
+            }
             onPrevSlide={handlePreviousScene}
             onNextSlide={handleNextScene}
             onPlayPause={handlePlayPause}
@@ -869,7 +872,9 @@ export function Stage({
             sidebarCollapsed={sidebarCollapsed}
             chatCollapsed={chatAreaCollapsed}
             onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-            onToggleChat={hideChatToggle ? undefined : () => setChatAreaCollapsed(!chatAreaCollapsed)}
+            onToggleChat={
+              hideChatToggle ? undefined : () => setChatAreaCollapsed(!chatAreaCollapsed)
+            }
             onPrevSlide={handlePreviousScene}
             onNextSlide={handleNextScene}
             onWhiteboardClose={handleWhiteboardToggle}

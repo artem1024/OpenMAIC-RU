@@ -146,14 +146,40 @@ test.describe('Embedded mode (osvaivai iframe)', () => {
     });
   });
 
+  test('mobile=1 в landscape отдаёт максимум высоты слайду и не раздувает нижнюю панель', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 844, height: 390 });
+
+    const classroom = new ClassroomPage(page);
+    await page.goto(`/classroom/${TEST_STAGE_ID}?embedded=1&showExport=1&mobile=1`);
+    await classroom.waitForLoaded();
+
+    await page.getByRole('button', { name: 'Нажмите, чтобы начать урок' }).click();
+
+    const roundtable = page.getByTestId('roundtable');
+    await expect(roundtable).toBeVisible();
+
+    const roundtableBox = await roundtable.boundingBox();
+    expect(roundtableBox?.height).toBeLessThanOrEqual(100);
+
+    const slideBox = await page.getByTestId('slide-frame').boundingBox();
+    expect(slideBox?.height).toBeGreaterThanOrEqual(220);
+    expect(slideBox?.width).toBeGreaterThanOrEqual(390);
+
+    const viewportOverflow = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    }));
+    expect(viewportOverflow.scrollWidth).toBeLessThanOrEqual(viewportOverflow.innerWidth);
+  });
+
   test('header показывает кнопку back только когда embedded выключен', async ({ page }) => {
     // Standalone (без ?embedded=1) — кнопка back должна присутствовать.
     await page.goto(`/classroom/${TEST_STAGE_ID}`);
     await page.locator('header').first().waitFor({ state: 'visible' });
     const standaloneHeader = page.locator('header').first();
-    const standaloneIsTall = await standaloneHeader.evaluate((el) =>
-      el.classList.contains('h-20'),
-    );
+    const standaloneIsTall = await standaloneHeader.evaluate((el) => el.classList.contains('h-20'));
     expect(standaloneIsTall).toBe(true);
   });
 });

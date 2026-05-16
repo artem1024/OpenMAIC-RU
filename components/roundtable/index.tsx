@@ -436,11 +436,14 @@ export function Roundtable({
   return (
     <div className={cn(
       'w-full flex flex-col relative z-10 border-t border-gray-100 dark:border-gray-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md',
-      isMobileParam ? 'h-[110px]' : 'h-[192px]'
-    )}>
+      isMobileParam ? 'h-[96px]' : 'h-[192px]'
+    )} data-testid="roundtable">
       {/* ── Toolbar strip — merged from CanvasArea ── */}
       <CanvasToolbar
-        className="shrink-0 h-8 px-3 border-b border-gray-100/40 dark:border-gray-700/30"
+        className={cn(
+          'shrink-0 h-8 border-b border-gray-100/40 dark:border-gray-700/30',
+          isMobileParam ? 'px-1' : 'px-3',
+        )}
         currentSceneIndex={currentSceneIndex}
         scenesCount={scenesCount}
         engineState={
@@ -473,12 +476,12 @@ export function Roundtable({
         onCycleSpeed={handleCycleSpeed}
       />
 
-      {/* ── Interaction area — three-column layout ── */}
+      {/* ── Interaction area ── */}
       <div className="flex-1 flex items-stretch min-h-0">
         {/* Left: Teacher identity */}
-        <div className={cn(
+        {!isMobileParam && <div className={cn(
           'shrink-0 flex flex-col border-r border-gray-100/50 dark:border-gray-700/50 bg-white/40 dark:bg-gray-900/40 overflow-visible relative',
-          isMobileParam ? 'w-[64px]' : 'w-[90px]'
+          'w-[90px]'
         )}>
           {/* Decorative Element (Top) */}
           <div className="absolute top-0 inset-x-0 h-16 bg-gradient-to-b from-purple-50/50 dark:from-purple-900/10 to-transparent pointer-events-none" />
@@ -612,10 +615,10 @@ export function Roundtable({
               </AnimatePresence>
             </div>
           </div>
-        </div>
+        </div>}
 
         {/* Center: Interaction stage */}
-        <div className="flex-1 relative mx-3 mb-2">
+        <div className={cn('flex-1 relative min-w-0', isMobileParam ? 'mx-1 mb-1' : 'mx-3 mb-2')}>
           {/* End flash banner (Issue 3) */}
           <AnimatePresence>
             {endFlashVisible && (
@@ -649,7 +652,12 @@ export function Roundtable({
                 if (isRecording) stopRecording();
               }
             }}
-            className="relative w-full h-full rounded-[2.5rem] bg-gradient-to-b from-white/40 to-white/80 dark:from-gray-800/40 dark:to-gray-800/80 backdrop-blur-xl border border-white/50 dark:border-gray-700/50 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.05),inset_0_1px_0_0_rgba(255,255,255,0.9)] dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)] flex flex-col justify-center px-6 overflow-hidden group transition-all duration-700 cursor-default"
+            className={cn(
+              'relative w-full h-full bg-gradient-to-b from-white/40 to-white/80 dark:from-gray-800/40 dark:to-gray-800/80 backdrop-blur-xl border border-white/50 dark:border-gray-700/50 flex flex-col justify-center overflow-hidden group transition-all duration-700 cursor-default',
+              isMobileParam
+                ? 'rounded-2xl px-2 shadow-sm'
+                : 'rounded-[2.5rem] px-6 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.05),inset_0_1px_0_0_rgba(255,255,255,0.9)] dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.3)]',
+            )}
           >
             {/* Text input box */}
             <AnimatePresence>
@@ -665,10 +673,20 @@ export function Roundtable({
                   animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
                   exit={{ opacity: 0, scale: 0.95, y: 15, filter: 'blur(4px)' }}
                   onClick={(e) => e.stopPropagation()}
-                  className="absolute inset-x-6 bottom-4 z-20 flex items-center justify-end"
+                  className={cn(
+                    'absolute z-20 flex items-center justify-end',
+                    isMobileParam ? 'inset-x-2 bottom-1' : 'inset-x-6 bottom-4',
+                  )}
                 >
-                  <div className="relative w-fit max-w-[85%] sm:max-w-[65%] min-w-[200px] sm:min-w-[300px] bg-white/90 dark:bg-gray-800/90 backdrop-blur-md p-2 pr-2 rounded-2xl rounded-br-none shadow-2xl border border-purple-200 dark:border-purple-700 flex items-end gap-2 ring-1 ring-purple-100/50 dark:ring-purple-800/50">
-                    <div className="pl-4 flex-1 py-1 min-w-0">
+                  <div
+                    className={cn(
+                      'relative w-fit bg-white/90 dark:bg-gray-800/90 backdrop-blur-md pr-2 rounded-2xl rounded-br-none shadow-2xl border border-purple-200 dark:border-purple-700 flex items-end gap-2 ring-1 ring-purple-100/50 dark:ring-purple-800/50',
+                      isMobileParam
+                        ? 'max-w-[96%] min-w-[180px] p-1'
+                        : 'max-w-[85%] sm:max-w-[65%] min-w-[200px] sm:min-w-[300px] p-2',
+                    )}
+                  >
+                    <div className={cn('flex-1 min-w-0', isMobileParam ? 'pl-2 py-0' : 'pl-4 py-1')}>
                       <textarea
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
@@ -681,7 +699,10 @@ export function Roundtable({
                         placeholder={t('roundtable.inputPlaceholder')}
                         autoFocus
                         rows={1}
-                        className="w-full resize-none bg-transparent border-none focus:ring-0 focus:outline-none outline-none shadow-none ring-0 text-gray-700 dark:text-gray-200 text-sm placeholder:text-gray-400 dark:placeholder:text-gray-500 min-h-[40px] max-h-[120px]"
+                        className={cn(
+                          'w-full resize-none bg-transparent border-none focus:ring-0 focus:outline-none outline-none shadow-none ring-0 text-gray-700 dark:text-gray-200 placeholder:text-gray-400 dark:placeholder:text-gray-500',
+                          isMobileParam ? 'text-xs min-h-[28px] max-h-[42px]' : 'text-sm min-h-[40px] max-h-[120px]',
+                        )}
                         style={{ fieldSizing: 'content' } as Record<string, string>}
                       />
                     </div>
@@ -689,7 +710,8 @@ export function Roundtable({
                       onClick={handleSendMessage}
                       disabled={isSendCooldown}
                       className={cn(
-                        'p-2.5 text-white rounded-xl transition shadow-md mb-0.5 shrink-0',
+                        'text-white rounded-xl transition shadow-md mb-0.5 shrink-0',
+                        isMobileParam ? 'p-2' : 'p-2.5',
                         isSendCooldown
                           ? 'bg-gray-400 dark:bg-gray-600 cursor-not-allowed shadow-gray-200 dark:shadow-gray-900/50'
                           : 'bg-purple-600 hover:bg-purple-700 dark:bg-purple-500 dark:hover:bg-purple-600 shadow-purple-200 dark:shadow-purple-900/50',
@@ -996,8 +1018,10 @@ export function Roundtable({
                         onPlayPause?.();
                       }}
                       className={cn(
-                        'relative px-4 pt-2 pb-3 rounded-2xl text-[15px] leading-relaxed transition-all border max-w-[65%] min-w-[200px] group/bubble flex flex-col max-h-[110px]',
-                        bubbleRole === 'teacher' ? 'pl-4 pr-10' : 'pl-4 pr-10',
+                        'relative rounded-2xl transition-all border group/bubble flex flex-col',
+                        isMobileParam
+                          ? 'max-w-[92%] min-w-0 max-h-[46px] px-3 py-1.5 pr-8 text-[12px] leading-snug'
+                          : 'max-w-[65%] min-w-[200px] max-h-[110px] px-4 pt-2 pb-3 pr-10 text-[15px] leading-relaxed',
                         bubbleRole === 'user'
                           ? 'bg-purple-600/95 dark:bg-purple-500/95 backdrop-blur-sm border-purple-400/40 dark:border-purple-300/40 text-white rounded-br-sm shadow-md shadow-purple-300/30 dark:shadow-purple-800/30'
                           : bubbleRole === 'agent'
@@ -1020,14 +1044,16 @@ export function Roundtable({
                           return (
                             <div
                               className={cn(
-                                'absolute -top-2.5 z-20 pointer-events-none select-none',
+                                'absolute z-20 pointer-events-none select-none',
+                                isMobileParam ? '-top-1.5' : '-top-2.5',
                                 bubbleRole === 'teacher' ? '-left-2.5' : '-right-2.5',
                               )}
                               title={bubbleName}
                             >
                               <div
                                 className={cn(
-                                  'w-6 h-6 rounded-full overflow-hidden border-2 shadow-sm',
+                                  'rounded-full overflow-hidden border-2 shadow-sm',
+                                  isMobileParam ? 'w-5 h-5' : 'w-6 h-6',
                                   bubbleRole === 'user'
                                     ? 'border-purple-400 dark:border-purple-500'
                                     : bubbleRole === 'agent'
@@ -1174,9 +1200,69 @@ export function Roundtable({
         </div>
 
         {/* Right: Participants area */}
+        {isMobileParam ? (
+          <div className="shrink-0 w-12 flex items-center justify-center border-l border-gray-100/50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/30">
+            {isSendCooldown ? (
+              <div className="flex items-center gap-[3px]">
+                {[0, 1, 2].map((i) => (
+                  <motion.div
+                    key={i}
+                    animate={{
+                      y: [0, -3, 0],
+                      opacity: [0.35, 0.9, 0.35],
+                    }}
+                    transition={{
+                      repeat: Infinity,
+                      duration: 0.9,
+                      delay: i * 0.12,
+                      ease: 'easeInOut',
+                    }}
+                    className="w-[4px] h-[4px] rounded-full bg-purple-400 dark:bg-purple-400"
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (asrEnabled) handleToggleVoice();
+                  }}
+                  disabled={!asrEnabled}
+                  className={cn(
+                    'w-8 h-7 rounded-lg border flex items-center justify-center transition-all active:scale-95 shadow-sm',
+                    !asrEnabled
+                      ? 'bg-gray-100 dark:bg-gray-800/50 text-gray-300 dark:text-gray-600 border-gray-200 dark:border-gray-700 cursor-not-allowed'
+                      : isVoiceOpen
+                        ? 'bg-purple-600 dark:bg-purple-500 border-purple-600 dark:border-purple-500 text-white shadow-purple-200 dark:shadow-purple-800'
+                        : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-200 dark:hover:border-purple-700',
+                  )}
+                  aria-label={t('roundtable.listening')}
+                >
+                  {asrEnabled ? <Mic className="w-3.5 h-3.5" /> : <MicOff className="w-3.5 h-3.5" />}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleToggleInput();
+                  }}
+                  className={cn(
+                    'w-8 h-7 rounded-lg border flex items-center justify-center transition-all active:scale-95 shadow-sm',
+                    isInputOpen
+                      ? 'bg-purple-600 dark:bg-purple-500 border-purple-600 dark:border-purple-500 text-white shadow-purple-200 dark:shadow-purple-800'
+                      : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-600 dark:hover:text-purple-400 hover:border-purple-200 dark:hover:border-purple-700',
+                  )}
+                  aria-label={t('roundtable.inputPlaceholder')}
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
         <div className={cn(
           'shrink-0 flex flex-col border-l border-gray-100/50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/30 overflow-visible',
-          isMobileParam ? 'w-[80px] py-1' : 'w-[140px] py-3'
+          'w-[140px] py-3'
         )}>
           {/* Companion agent avatars — horizontal row, scrollable on overflow, arrows on hover */}
           <div className="flex-none relative group/scroll">
@@ -1496,6 +1582,7 @@ export function Roundtable({
             </div>
           </div>
         </div>
+        )}
       </div>
       {/* close interaction row */}
     </div>

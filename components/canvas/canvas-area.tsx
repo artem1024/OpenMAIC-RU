@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import { Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -48,6 +49,9 @@ export function CanvasArea({
   onRetryGeneration,
 }: CanvasAreaProps) {
   const { t } = useI18n();
+  const searchParams = useSearchParams();
+  const isEmbeddedMobile =
+    searchParams?.get('embedded') === '1' && searchParams?.get('mobile') === '1';
   const showControls = mode === 'playback' && !whiteboardOpen;
   const showPlayHint =
     showControls &&
@@ -86,6 +90,7 @@ export function CanvasArea({
       <div
         className={cn(
           'flex-1 min-h-0 relative overflow-hidden flex items-center justify-center p-2 transition-colors duration-500',
+          isEmbeddedMobile && 'p-1',
           currentScene?.type === 'interactive'
             ? 'bg-blue-50/30 dark:bg-blue-900/10'
             : 'bg-gray-50/30 dark:bg-gray-900/30',
@@ -94,12 +99,14 @@ export function CanvasArea({
         <div
           className={cn(
             'aspect-[16/9] h-full max-h-full max-w-full bg-white dark:bg-gray-800 shadow-2xl rounded-lg overflow-hidden relative transition-all duration-700',
+            isEmbeddedMobile && 'rounded-sm shadow-lg',
             showControls && !isLiveSession && currentScene?.type === 'slide' && 'cursor-pointer',
             currentScene?.type === 'interactive'
               ? 'shadow-blue-200/50 dark:shadow-blue-900/50 ring-1 ring-blue-900/5 dark:ring-blue-500/10'
               : 'shadow-gray-200/50 dark:shadow-gray-800/50 ring-1 ring-gray-950/5 dark:ring-white/5',
           )}
           onClick={handleSlideClick}
+          data-testid="slide-frame"
         >
           {/* Whiteboard Layer */}
           <div className="absolute inset-0 z-[110] pointer-events-none">
