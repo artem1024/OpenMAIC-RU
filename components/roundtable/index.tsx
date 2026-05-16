@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Mic,
@@ -157,6 +158,11 @@ export function Roundtable({
   const bubbleScrollRef = useRef<HTMLDivElement>(null);
   const teacherAvatarRef = useRef<HTMLDivElement>(null);
   const studentAvatarRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Mobile-landscape mode: roundtable bar must be much shorter to leave
+  // room for the slide canvas on a phone in landscape (~390 px height).
+  const searchParams = useSearchParams();
+  const isMobileParam = searchParams?.get('mobile') === '1';
 
   // End flash visible state (Issue 3)
   const [endFlashVisible, setEndFlashVisible] = useState(false);
@@ -428,7 +434,10 @@ export function Roundtable({
   }, [playbackSpeed, setPlaybackSpeed]);
 
   return (
-    <div className="h-[192px] w-full flex flex-col relative z-10 border-t border-gray-100 dark:border-gray-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md">
+    <div className={cn(
+      'w-full flex flex-col relative z-10 border-t border-gray-100 dark:border-gray-800 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md',
+      isMobileParam ? 'h-[110px]' : 'h-[192px]'
+    )}>
       {/* ── Toolbar strip — merged from CanvasArea ── */}
       <CanvasToolbar
         className="shrink-0 h-8 px-3 border-b border-gray-100/40 dark:border-gray-700/30"
@@ -467,7 +476,10 @@ export function Roundtable({
       {/* ── Interaction area — three-column layout ── */}
       <div className="flex-1 flex items-stretch min-h-0">
         {/* Left: Teacher identity */}
-        <div className="w-[90px] shrink-0 flex flex-col border-r border-gray-100/50 dark:border-gray-700/50 bg-white/40 dark:bg-gray-900/40 overflow-visible relative">
+        <div className={cn(
+          'shrink-0 flex flex-col border-r border-gray-100/50 dark:border-gray-700/50 bg-white/40 dark:bg-gray-900/40 overflow-visible relative',
+          isMobileParam ? 'w-[64px]' : 'w-[90px]'
+        )}>
           {/* Decorative Element (Top) */}
           <div className="absolute top-0 inset-x-0 h-16 bg-gradient-to-b from-purple-50/50 dark:from-purple-900/10 to-transparent pointer-events-none" />
           <div className="absolute top-3 inset-x-0 flex flex-col items-center justify-center gap-1 opacity-10 pointer-events-none">
@@ -1162,7 +1174,10 @@ export function Roundtable({
         </div>
 
         {/* Right: Participants area */}
-        <div className="w-[140px] shrink-0 flex flex-col py-3 border-l border-gray-100/50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/30 overflow-visible">
+        <div className={cn(
+          'shrink-0 flex flex-col border-l border-gray-100/50 dark:border-gray-700/50 bg-gray-50/30 dark:bg-gray-900/30 overflow-visible',
+          isMobileParam ? 'w-[80px] py-1' : 'w-[140px] py-3'
+        )}>
           {/* Companion agent avatars — horizontal row, scrollable on overflow, arrows on hover */}
           <div className="flex-none relative group/scroll">
             {/* Left arrow */}
